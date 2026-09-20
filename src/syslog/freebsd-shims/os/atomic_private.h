@@ -8,13 +8,18 @@
 /* Apple memory orderings — map to stdatomic equivalents. */
 #define os_atomic_load(p, m)		atomic_load_explicit((p), memory_order_##m)
 #define os_atomic_store(p, v, m)	atomic_store_explicit((p), (v), memory_order_##m)
-#define os_atomic_add(p, v, m)		atomic_fetch_add_explicit((p), (v), memory_order_##m)
-#define os_atomic_sub(p, v, m)		atomic_fetch_sub_explicit((p), (v), memory_order_##m)
-#define os_atomic_inc(p, m)		atomic_fetch_add_explicit((p), 1, memory_order_##m)
-#define os_atomic_dec(p, m)		atomic_fetch_sub_explicit((p), 1, memory_order_##m)
-#define os_atomic_or(p, v, m)		atomic_fetch_or_explicit((p), (v), memory_order_##m)
-#define os_atomic_and(p, v, m)		atomic_fetch_and_explicit((p), (v), memory_order_##m)
-#define os_atomic_xor(p, v, m)		atomic_fetch_xor_explicit((p), (v), memory_order_##m)
+/* Match libdispatch's os_atomic_* contract: updates return the new value. */
+#define _os_atomic_c11_op(p, v, m, o, op) ({ \
+    __typeof__(atomic_load_explicit((p), memory_order_relaxed)) _v = (v); \
+    __typeof__(_v) _r = atomic_fetch_##o##_explicit((p), _v, memory_order_##m); \
+    (__typeof__(_r))(_r op _v); })
+#define os_atomic_add(p, v, m)		_os_atomic_c11_op((p), (v), m, add, +)
+#define os_atomic_sub(p, v, m)		_os_atomic_c11_op((p), (v), m, sub, -)
+#define os_atomic_inc(p, m)		os_atomic_add((p), 1, m)
+#define os_atomic_dec(p, m)		os_atomic_sub((p), 1, m)
+#define os_atomic_or(p, v, m)		_os_atomic_c11_op((p), (v), m, or, |)
+#define os_atomic_and(p, v, m)		_os_atomic_c11_op((p), (v), m, and, &)
+#define os_atomic_xor(p, v, m)		_os_atomic_c11_op((p), (v), m, xor, ^)
 #define os_atomic_xchg(p, v, m)		atomic_exchange_explicit((p), (v), memory_order_##m)
 #define os_atomic_cmpxchg(p, e, v, m)	({ __typeof(e) _e = (e); \
                                            atomic_compare_exchange_strong_explicit( \
