@@ -533,8 +533,10 @@ xpc_connection_recv_message(void *context)
 	if (conn->xc_flags & XPC_CONNECTION_MACH_SERVICE_LISTENER) {
 		TAILQ_FOREACH(peer, &conn->xc_peers, xc_link) {
 			if (remote == peer->xc_remote_port) {
-				dispatch_async(peer->xc_target_queue, ^{
-					peer->xc_handler(result);
+				dispatch_async(peer->xc_recv_queue, ^{
+					dispatch_async(peer->xc_target_queue, ^{
+						peer->xc_handler(result);
+					});
 				});
 				return;
 			}
@@ -556,8 +558,11 @@ xpc_connection_recv_message(void *context)
 			conn->xc_handler(xpeer);
 		});
 
-		dispatch_async(peer->xc_target_queue, ^{
-			peer->xc_handler(result);
+		/* The receive queue is suspended until peer setup calls resume. */
+		dispatch_async(peer->xc_recv_queue, ^{
+			dispatch_async(peer->xc_target_queue, ^{
+				peer->xc_handler(result);
+			});
 		});
 
 	} else {
