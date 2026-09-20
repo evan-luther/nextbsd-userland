@@ -13,12 +13,14 @@
  *   2. xpc_dictionary_set_string / _get_string round-trips a value.
  *   3. xpc_dictionary_set_int64 / _get_int64 round-trips an integer.
  *   4. xpc_release on the dictionary doesn't crash.
+ *   5. Type tokens are distinct, so error/type validation is meaningful.
  *
  * Exit codes:
  *   0 — all checks pass
  *   1 — xpc_dictionary_create returned NULL
  *   2 — string round-trip mismatch
  *   3 — int64 round-trip mismatch
+ *   4 — type identity mismatch
  */
 #include <stdio.h>
 #include <string.h>
@@ -31,6 +33,27 @@ main(void)
 	if (d == NULL) {
 		printf("FAIL: xpc_dictionary_create returned NULL\n");
 		return 1;
+	}
+	xpc_type_t types[] = {
+		XPC_TYPE_ARRAY, XPC_TYPE_BOOL, XPC_TYPE_CONNECTION, XPC_TYPE_DATA,
+		XPC_TYPE_DATE, XPC_TYPE_DICTIONARY, XPC_TYPE_ENDPOINT, XPC_TYPE_NULL,
+		XPC_TYPE_ERROR, XPC_TYPE_FD, XPC_TYPE_INT64, XPC_TYPE_UINT64,
+		XPC_TYPE_SHMEM, XPC_TYPE_STRING, XPC_TYPE_UUID, XPC_TYPE_DOUBLE
+	};
+	for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); i++) {
+		for (size_t j = i + 1; j < sizeof(types) / sizeof(types[0]); j++) {
+			if (types[i] == types[j]) {
+				printf("FAIL: XPC type tokens %zu and %zu alias\n", i, j);
+				xpc_release(d);
+				return 4;
+			}
+		}
+	}
+	if (xpc_get_type(d) != XPC_TYPE_DICTIONARY ||
+	    xpc_get_type(d) == XPC_TYPE_ERROR) {
+		printf("FAIL: dictionary cannot be distinguished from an error\n");
+		xpc_release(d);
+		return 4;
 	}
 
 	xpc_dictionary_set_string(d, "k_str", "hello-xpc");

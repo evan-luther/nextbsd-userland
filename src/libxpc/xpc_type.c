@@ -32,6 +32,8 @@
 #include "xpc_internal.h"
 
 struct _xpc_type_s {
+	/* Type tokens are compared by address; empty C structs can alias. */
+	char identity;
 };
 
 typedef const struct _xpc_type_s xt;
