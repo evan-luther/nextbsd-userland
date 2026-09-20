@@ -247,8 +247,6 @@ xpc_object_t
 xpc_dictionary_create_reply(xpc_object_t original)
 {
 	struct xpc_object *xo, *xo_orig;
-	nvlist_t *nv;
-	xpc_u val;
 
 	if (xpc_get_type(original) != XPC_TYPE_DICTIONARY)
 		return NULL;
@@ -260,7 +258,11 @@ xpc_dictionary_create_reply(xpc_object_t original)
 	}
 	xo_orig->xo_flags &= ~_XPC_FROM_WIRE;
 
-	return xpc_dictionary_create(NULL, NULL, 0);
+	xo = xpc_dictionary_create(NULL, NULL, 0);
+	if (xo != NULL)
+		xpc_dictionary_set_uint64(xo, XPC_SEQID,
+		    xpc_dictionary_get_uint64(original, XPC_SEQID));
+	return xo;
 }
 
 void
