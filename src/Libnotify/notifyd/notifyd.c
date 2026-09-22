@@ -1352,10 +1352,28 @@ main(int argc, const char *argv[])
 	}
 #endif
 
-	/* remove limit of number of file descriptors */
+	/*
+	 * Remove the limit on the number of file descriptors.
+	 *
+	 * Apple caps the request at OPEN_MAX because Darwin's setrlimit()
+	 * rejects anything larger (OPEN_MAX is 10240 there). On FreeBSD
+	 * OPEN_MAX is the POSIX minimum, 64, so the same expression LOWERED
+	 * the soft limit to 64. That was fatal here: in this kernel every
+	 * Mach port right is a file descriptor (ipc_entry_get ->
+	 * kern_fdalloc), and notifyd already holds ~40 for its own ports and
+	 * kqueues, so after ~24 client common ports mach_port_allocate()
+	 * failed with KERN_RESOURCE_SHORTAGE and __notify_generate_common_port
+	 * asserted. Every client mid-RPC then hung forever on the dead
+	 * instance. FreeBSD clamps RLIM_INFINITY to kern.maxfilesperproc, so
+	 * ask for the maximum and let the kernel size it.
+	 */
 	rlim.rlim_max = RLIM_INFINITY;
-	rlim.rlim_cur = MIN(OPEN_MAX, rlim.rlim_max);
-	setrlimit(RLIMIT_NOFILE, &rlim);
+	rlim.rlim_cur = RLIM_INFINITY;
+	if (setrlimit(RLIMIT_NOFILE, &rlim) != 0 &&
+	    getrlimit(RLIMIT_NOFILE, &rlim) == 0) {
+		rlim.rlim_cur = rlim.rlim_max;
+		setrlimit(RLIMIT_NOFILE, &rlim);
+	}
 
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGHUP, SIG_IGN);
