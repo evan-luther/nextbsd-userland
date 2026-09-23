@@ -306,6 +306,35 @@ Boolean _CFIsObjC(CFTypeID typeID, void *obj) {
 #if CF_BRIDGE_FOREIGN_RUNTIME
 static const void *__CFBridgeDefaultClass = NULL;
 CF_INLINE CFTypeID __CFTypeIDFromInfo(__CFInfoType info);
+
+// Every class ever registered as a bridge class. The generic foreign test
+// compares an object's isa against this list instead of reading the
+// object's info word: a foreign object may be a single word long.
+// Appended under __CFBigRuntimeFunnel; the count is published with release
+// ordering so lock-free readers see initialised entries.
+#define __CF_BRIDGE_MAX_CLASSES 64
+static uintptr_t __CFBridgeClasses[__CF_BRIDGE_MAX_CLASSES];
+static _Atomic(CFIndex) __CFBridgeClassCount = 0;
+
+// Call with __CFBigRuntimeFunnel held.
+static void __CFBridgeNoteClass(const void *cls) {
+    CFIndex count = atomic_load_explicit(&__CFBridgeClassCount, memory_order_relaxed);
+    if (cls == NULL) return;
+    for (CFIndex i = 0; i < count; i++) {
+        if (__CFBridgeClasses[i] == (uintptr_t)cls) return;
+    }
+    if (count >= __CF_BRIDGE_MAX_CLASSES) HALT;
+    __CFBridgeClasses[count] = (uintptr_t)cls;
+    atomic_store_explicit(&__CFBridgeClassCount, count + 1, memory_order_release);
+}
+
+CF_INLINE Boolean __CFBridgeIsClass(uintptr_t isa) {
+    CFIndex count = atomic_load_explicit(&__CFBridgeClassCount, memory_order_acquire);
+    for (CFIndex i = 0; i < count; i++) {
+        if (__CFBridgeClasses[i] == isa) return true;
+    }
+    return false;
+}
 #endif
 
 CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls) {
@@ -382,6 +411,7 @@ void _CFRuntimeBridgeTypeToClass(CFTypeID cf_typeID, const void *cls_ref) {
 #endif
     __CFRuntimeObjCClassTable[cf_typeID] = (uintptr_t)cls_ref;
 #if CF_BRIDGE_FOREIGN_RUNTIME
+    __CFBridgeNoteClass(cls_ref);
     __CFBridgeRestampStaticInstances(cf_typeID, cls_ref);
 #endif
     os_unfair_lock_unlock(&__CFBigRuntimeFunnel);
@@ -393,6 +423,7 @@ void _CFRuntimeBridgeSetDefaultClass(const void *cls) {
     __CFBridgeEnsureStaticsRegistered();
     const void *oldDefault = __CFBridgeDefaultClass;
     __CFBridgeDefaultClass = cls;
+    __CFBridgeNoteClass(cls);
     for (CFTypeID typeID = 0; typeID < __CFRuntimeClassTableSize; typeID++) {
         uintptr_t current = __CFRuntimeObjCClassTable[typeID];
         if (current == 0 || current == (uintptr_t)oldDefault) {
@@ -794,11 +825,12 @@ CF_PRIVATE void __CFGenericValidateType_(CFTypeRef cf, CFTypeID type, const char
 
 CF_INLINE Boolean CFTYPE_IS_SWIFT(const void *obj) {
 #if CF_BRIDGE_FOREIGN_RUNTIME
-    // Tagged pointers are foreign; test before dereferencing the info word.
-    if (((uintptr_t)obj & 7) != 0) return true;
-#endif
+    // A foreign object need not have an info word; decide from the isa.
+    return _CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)obj);
+#else
     CFTypeID typeID = __CFGenericTypeID_inline(obj);
     return CF_IS_SWIFT(typeID, obj);
+#endif
 }
 
 #define CFTYPE_SWIFT_FUNCDISPATCH0(rettype, obj, fn) \
@@ -1975,16 +2007,15 @@ bool _CFIsSwift(CFTypeID type, CFSwiftRef obj) {
 #if CF_BRIDGE_FOREIGN_RUNTIME
     // Foreign test: a tagged pointer (low bits set) is foreign; test it
     // before any dereference. Otherwise the object is foreign iff its
-    // isa is non-NULL, is not the constant-string class, and is not the
-    // class registered for the type ID in its info word (or the given
-    // type ID for the typed form).
+    // isa is non-NULL, is not the constant-string class, and is not a
+    // registered bridge class (the generic form) or not the class
+    // registered for the given type ID (the typed form). Only the isa word
+    // is read: a foreign object may be a single word long.
     if (((uintptr_t)obj & 7) != 0) return true;
     uintptr_t isa = obj->isa;
     if (isa == 0) return false;
     if (isa == (uintptr_t)&__CFConstantStringClassReference) return false;
-    if (type == _kCFRuntimeNotATypeID) {
-        type = __CFTypeIDFromInfo(atomic_load(&(((CFRuntimeBase *)obj)->_cfinfoa)));
-    }
+    if (type == _kCFRuntimeNotATypeID) return !__CFBridgeIsClass(isa);
     if (type >= __CFRuntimeClassTableSize) return true;
     return isa != _GetCFRuntimeObjcClassAtIndex(type);
 #else

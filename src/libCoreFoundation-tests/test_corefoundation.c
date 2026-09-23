@@ -21,6 +21,8 @@
 #include <CoreFoundation/ForSwiftFoundationOnly.h>
 
 #include <stdint.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 static int
 fail(const char *msg)
@@ -225,6 +227,36 @@ test_foreign_bridge(void)
 			return fail("CFSTR length wrong");
 		if (hook_retain != r || hook_release != x || hook_string_length != l)
 			return fail("CFSTR literal took the foreign path");
+	}
+
+	/* (h) A foreign object may be a single word (an Objective-C object
+	 * with no instance variables): the generic foreign test must read
+	 * only its isa. The word after it is an inaccessible page, so any
+	 * read past the isa faults. */
+	{
+		long page = sysconf(_SC_PAGESIZE);
+		char *map = mmap(NULL, 2 * page, PROT_READ | PROT_WRITE,
+		    MAP_PRIVATE | MAP_ANON, -1, 0);
+		if (map == MAP_FAILED) return fail("mmap failed");
+		if (mprotect(map + page, page, PROT_NONE) != 0)
+			return fail("mprotect failed");
+		uintptr_t *one_word = (uintptr_t *)(map + page - sizeof(uintptr_t));
+		*one_word = (uintptr_t)&fake_foreign_class;
+		CFTypeRef small = (CFTypeRef)one_word;
+		int r = hook_retain, x = hook_release, t = hook_cfTypeID,
+		    h = hook_hash, c = hook_retainCount;
+		if (CFRetain(small) != small || hook_retain != r + 1)
+			return fail("one-word object did not reach retain hook");
+		CFRelease(small);
+		if (hook_release != x + 1)
+			return fail("one-word object did not reach release hook");
+		if (CFGetTypeID(small) != CFStringGetTypeID() || hook_cfTypeID != t + 1)
+			return fail("one-word object did not reach _cfTypeID hook");
+		if (CFHash(small) != 4242 || hook_hash != h + 1)
+			return fail("one-word object did not reach hash hook");
+		if (CFGetRetainCount(small) != 7 || hook_retainCount != c + 1)
+			return fail("one-word object did not reach retainCount hook");
+		munmap(map, 2 * page);
 	}
 
 	CFRelease(s1);
