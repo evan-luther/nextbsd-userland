@@ -1788,6 +1788,13 @@ _CFThreadRef _CFThreadCreate(const _CFThreadAttributes attrs, void *_Nullable (*
 #endif
 }
 
+#endif // DEPLOYMENT_RUNTIME_SWIFT
+
+/* freebsd-launchd-mach patch: the thread-name wrappers are plain pthread
+ * calls with no Swift dependency, and CFStream's legacy scheduling thread
+ * calls _CFThreadSetName in every build. Inside the Swift-only block the
+ * non-Swift library exported an unresolved reference to it. */
+#if DEPLOYMENT_RUNTIME_SWIFT || TARGET_OS_BSD || TARGET_OS_LINUX
 CF_CROSS_PLATFORM_EXPORT int _CFThreadSetName(_CFThreadRef thread, const char *_Nonnull name) {
 #if TARGET_OS_MAC
     if (pthread_equal(pthread_self(), thread)) {
@@ -1878,6 +1885,9 @@ CF_CROSS_PLATFORM_EXPORT int _CFThreadGetName(char *buf, int length) {
     return -1;
 }
 
+#endif
+
+#if DEPLOYMENT_RUNTIME_SWIFT
 CF_EXPORT char **_CFEnviron(void) {
 #if TARGET_OS_MAC
     return *_NSGetEnviron();
