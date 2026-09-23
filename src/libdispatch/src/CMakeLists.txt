@@ -17,8 +17,6 @@ add_library(dispatch
   transform.c
   voucher.c
   shims.c
-  ${CMAKE_CURRENT_BINARY_DIR}/protocolUser.c
-  ${CMAKE_CURRENT_BINARY_DIR}/protocolServer.c
   provider.d
   allocator_internal.h
   data_internal.h
@@ -83,6 +81,11 @@ if(HAVE_MACH)
             ${CMAKE_CURRENT_SOURCE_DIR}/protocol.defs
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/protocol.defs
     COMMENT "MIG protocol.defs -> protocol{,Server,User}.{h,c}")
+  # Only Mach builds have these stubs; init.c and queue.c include the
+  # generated headers under #if HAVE_MACH, so non-Mach targets need neither.
+  target_sources(dispatch PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}/protocolUser.c
+    ${CMAKE_CURRENT_BINARY_DIR}/protocolServer.c)
 endif()
 
 # NextBSD builds libdispatch with HAVE_MACH=ON (full XNU Mach userland), so
