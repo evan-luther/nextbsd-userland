@@ -505,6 +505,13 @@ CF_EXPORT Boolean _CFStringIsMutable(CFStringRef str);
 CF_EXPORT Boolean _CFArrayIsMutable(CFArrayRef array);
 CF_EXPORT Boolean _CFDataIsMutable(CFDataRef data);
 CF_EXPORT Boolean _CFCharacterSetIsMutable(CFCharacterSetRef cset);
+CF_EXPORT Boolean _CFDictionaryIsMutable(CFDictionaryRef hc);
+CF_EXPORT Boolean _CFSetIsMutable(CFSetRef hc);
+// Fast enumeration over CF-native dictionaries and sets; the state has the
+// layout of Objective-C's NSFastEnumerationState.
+struct __objcFastEnumerationStateEquivalent;
+CF_EXPORT unsigned long _CFDictionaryFastEnumeration(CFDictionaryRef hc, struct __objcFastEnumerationStateEquivalent *state, void *stackbuffer, unsigned long count);
+CF_EXPORT unsigned long _CFSetFastEnumeration(CFSetRef hc, struct __objcFastEnumerationStateEquivalent *state, void *stackbuffer, unsigned long count);
 CF_EXPORT void _CFRuntimeBridgeTypeToClass(CFTypeID type, const void *isa);
 
 CF_EXPORT CFNumberType _CFNumberGetType2(CFNumberRef number);
