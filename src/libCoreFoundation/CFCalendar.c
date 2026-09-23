@@ -729,7 +729,7 @@ CF_EXPORT Boolean _CFCalendarInitWithIdentifier(CFCalendarRef calendar, CFString
 
 CFCalendarRef _CFCalendarCreateCopy(CFAllocatorRef allocator, CFCalendarRef calendar) {
     //We should probably just conditionally call -copyWithZone: here but I'm concerned that it could expose incorrect third party subclasses that have just happened to get away with it until now
-    Boolean isObjC = CF_IS_OBJC(_kCFRuntimeIDCFCalendar, calendar);
+    Boolean isObjC = CF_IS_OBJC(_kCFRuntimeIDCFCalendar, calendar) || CF_IS_SWIFT(_kCFRuntimeIDCFCalendar, calendar);
     CFCalendarRef result = NULL;
     if (isObjC) {
         CFTimeZoneRef tz = CFCalendarCopyTimeZone(calendar);
@@ -750,12 +750,14 @@ CFCalendarRef _CFCalendarCreateCopy(CFAllocatorRef allocator, CFCalendarRef cale
 }
 
 CFStringRef CFCalendarGetIdentifier(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFStringRef, calendar, NSCalendar.calendarIdentifier);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFStringRef, (NSCalendar *)calendar, calendarIdentifier);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return calendar->_identifier;
 }
 
 CFLocaleRef CFCalendarCopyLocale(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFLocaleRef, calendar, NSCalendar._copyLocale);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFLocaleRef, (NSCalendar *)calendar, _copyLocale);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return CFLocaleCreateCopy(CFGetAllocator(calendar->_locale), calendar->_locale);
@@ -763,6 +765,7 @@ CFLocaleRef CFCalendarCopyLocale(CFCalendarRef calendar) {
 
 void CFCalendarSetLocale(CFCalendarRef calendar, CFLocaleRef locale) {
     ICU_LOG("                // CFCalendarSetLocale enter\n");
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, calendar, NSCalendar.setLocale, locale);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, (NSCalendar *)calendar, setLocale:(NSLocale *)locale);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     __CFGenericValidateType(locale, CFLocaleGetTypeID());
@@ -821,6 +824,7 @@ void CFCalendarSetLocale(CFCalendarRef calendar, CFLocaleRef locale) {
 }
 
 CFTimeZoneRef CFCalendarCopyTimeZone(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFTimeZoneRef, calendar, NSCalendar._copyTimeZone);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFTimeZoneRef, (NSCalendar *)calendar, _copyTimeZone);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return (CFTimeZoneRef)CFRetain(calendar->_tz);
@@ -828,6 +832,7 @@ CFTimeZoneRef CFCalendarCopyTimeZone(CFCalendarRef calendar) {
 
 void CFCalendarSetTimeZone(CFCalendarRef calendar, CFTimeZoneRef tz) {
     ICU_LOG("                // CFCalendarSetTimeZone enter\n");
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, calendar, NSCalendar.setTimeZone, tz);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, (NSCalendar *)calendar, setTimeZone:(NSTimeZone *)tz);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     if (tz) __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
@@ -840,6 +845,7 @@ void CFCalendarSetTimeZone(CFCalendarRef calendar, CFTimeZoneRef tz) {
 }
 
 CFIndex CFCalendarGetFirstWeekday(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFIndex, calendar, NSCalendar.firstWeekday);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFIndex, (NSCalendar *)calendar, firstWeekday);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return calendar->_firstWeekday;
@@ -847,6 +853,7 @@ CFIndex CFCalendarGetFirstWeekday(CFCalendarRef calendar) {
 
 void CFCalendarSetFirstWeekday(CFCalendarRef calendar, CFIndex wkdy) {
     ICU_LOG("                // CFCalendarSetFirstWeekday enter\n");
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, calendar, NSCalendar.setFirstWeekday, wkdy);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, (NSCalendar *)calendar, setFirstWeekday:(NSUInteger)wkdy);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     calendar->_firstWeekday = wkdy;
@@ -859,6 +866,7 @@ void CFCalendarSetFirstWeekday(CFCalendarRef calendar, CFIndex wkdy) {
 }
 
 CFIndex CFCalendarGetMinimumDaysInFirstWeek(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFIndex, calendar, NSCalendar.minimumDaysInFirstWeek);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFIndex, (NSCalendar *)calendar, minimumDaysInFirstWeek);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return calendar->_minDaysInFirstWeek;
@@ -866,6 +874,7 @@ CFIndex CFCalendarGetMinimumDaysInFirstWeek(CFCalendarRef calendar) {
 
 void CFCalendarSetMinimumDaysInFirstWeek(CFCalendarRef calendar, CFIndex mwd) {
     ICU_LOG("                // CFCalendarSetMinimumDaysInFirstWeek enter\n");
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, calendar, NSCalendar.setMinimumDaysInFirstWeek, mwd);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, (NSCalendar *)calendar, setMinimumDaysInFirstWeek:(NSUInteger)mwd);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     calendar->_minDaysInFirstWeek = mwd;
@@ -878,6 +887,7 @@ void CFCalendarSetMinimumDaysInFirstWeek(CFCalendarRef calendar, CFIndex mwd) {
 }
 
 CFDateRef CFCalendarCopyGregorianStartDate(CFCalendarRef calendar) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFDateRef, calendar, NSCalendar._copyGregorianStartDate);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFDateRef, (NSCalendar *)calendar, _copyGregorianStartDate);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return calendar->_gregorianStart ? (CFDateRef)CFRetain(calendar->_gregorianStart) : NULL;
@@ -885,6 +895,7 @@ CFDateRef CFCalendarCopyGregorianStartDate(CFCalendarRef calendar) {
 
 void CFCalendarSetGregorianStartDate(CFCalendarRef calendar, CFDateRef _Nullable date) {
     ICU_LOG("                // CFCalendarSetGregorianStartDate enter\n");
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, calendar, NSCalendar._setGregorianStartDate, date);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, void, (NSCalendar *)calendar, _setGregorianStartDate:(NSDate *)date);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     if (date) __CFGenericValidateType(date, CFDateGetTypeID());
@@ -1068,6 +1079,7 @@ static const char *__CFCalendarGetUnitName(CFCalendarUnit unit) {
 CFRange CFCalendarGetMinimumRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit unit) {
     ICU_LOG("                // CFCalendarGetMinimumRangeOfUnit enter (%s)\n", __CFCalendarGetUnitName(unit));
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFRange, calendar, NSCalendar._minimumRangeOfUnit, unit);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFCalendar, CFRange, (NSCalendar *)calendar, _minimumRangeOfUnit:(NSCalendarUnit)unit);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     switch (unit) {
@@ -1121,6 +1133,7 @@ CFRange CFCalendarGetMinimumRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit u
 CFRange CFCalendarGetMaximumRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit unit) {
     ICU_LOG("                // CFCalendarGetMaximumRangeOfUnit enter (%s)\n", __CFCalendarGetUnitName(unit));
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), CFRange, calendar, NSCalendar._maximumRangeOfUnit, unit);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), CFRange, (NSCalendar *)calendar, _maximumRangeOfUnit:(NSCalendarUnit)unit);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     switch (unit) {
@@ -1172,6 +1185,7 @@ CFRange CFCalendarGetMaximumRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit u
 }
 
 Boolean _CFCalendarComposeAbsoluteTimeV(CFCalendarRef calendar, /* out */ CFAbsoluteTime *atp, const char *componentDesc, int32_t *vector, int32_t count) {
+    if (CF_IS_SWIFT(CFCalendarGetTypeID(), calendar)) return false;
     if (!calendar->_cal) __CFCalendarSetupCal(calendar);
     if (calendar->_cal) {
         UErrorCode status = U_ZERO_ERROR;
@@ -1258,6 +1272,7 @@ Boolean _CFCalendarComposeAbsoluteTimeV(CFCalendarRef calendar, /* out */ CFAbso
 }
 
 Boolean _CFCalendarDecomposeAbsoluteTimeV(CFCalendarRef calendar, CFAbsoluteTime at, const char *componentDesc, int32_t **vector, int32_t count) {
+    if (CF_IS_SWIFT(CFCalendarGetTypeID(), calendar)) return false;
     if (!calendar->_cal) __CFCalendarSetupCal(calendar);
     if (calendar->_cal) {
         UErrorCode status = U_ZERO_ERROR;
@@ -1288,6 +1303,7 @@ Boolean _CFCalendarDecomposeAbsoluteTimeV(CFCalendarRef calendar, CFAbsoluteTime
 }
 
 Boolean _CFCalendarAddComponentsV(CFCalendarRef calendar, /* inout */ CFAbsoluteTime *atp, CFOptionFlags options, const char *componentDesc, int32_t *vector, int32_t count) {
+    if (CF_IS_SWIFT(CFCalendarGetTypeID(), calendar)) return false;
     if (!calendar->_cal) __CFCalendarSetupCal(calendar);
     if (calendar->_cal) {
         UErrorCode status = U_ZERO_ERROR;
@@ -1328,6 +1344,7 @@ Boolean _CFCalendarAddComponentsV(CFCalendarRef calendar, /* inout */ CFAbsolute
 #pragma mark -
 
 Boolean _CFCalendarGetComponentDifferenceV(CFCalendarRef calendar, CFAbsoluteTime startingAT, CFAbsoluteTime resultAT, CFOptionFlags options, const char *componentDesc, int32_t **vector, int32_t count) {
+    if (CF_IS_SWIFT(CFCalendarGetTypeID(), calendar)) return false;
     if (!calendar->_cal) __CFCalendarSetupCal(calendar);
     if (calendar->_cal) {
         UErrorCode status = U_ZERO_ERROR;
@@ -1383,6 +1400,7 @@ Boolean CFCalendarComposeAbsoluteTime(CFCalendarRef calendar, /* out */ CFAbsolu
     va_list args;
     va_start(args, componentDesc);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, calendar, NSCalendar._composeAbsoluteTime, atp, componentDesc, args);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, (NSCalendar *)calendar, _composeAbsoluteTime:atp :(const unsigned char *)componentDesc :args);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     int32_t idx, cnt = strlen((char *)componentDesc);
@@ -1400,6 +1418,7 @@ Boolean CFCalendarDecomposeAbsoluteTime(CFCalendarRef calendar, CFAbsoluteTime a
     va_list args;
     va_start(args, componentDesc);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, calendar, NSCalendar._decomposeAbsoluteTime, at, componentDesc, args);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, (NSCalendar *)calendar, _decomposeAbsoluteTime:at :(const unsigned char *)componentDesc :args);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     int32_t idx, cnt = strlen((char *)componentDesc);
@@ -1417,6 +1436,7 @@ Boolean CFCalendarAddComponents(CFCalendarRef calendar, /* inout */ CFAbsoluteTi
     va_list args;
     va_start(args, componentDesc);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, calendar, NSCalendar._addComponents, atp, options, componentDesc, args);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, (NSCalendar *)calendar, _addComponents:atp :options :(const unsigned char *)componentDesc :args);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     int32_t idx, cnt = strlen((char *)componentDesc);
@@ -1471,6 +1491,7 @@ Boolean CFCalendarGetComponentDifference(CFCalendarRef calendar, CFAbsoluteTime 
     va_list args;
     va_start(args, componentDesc);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, calendar, NSCalendar._diffComponents, startingAT, resultAT, options, componentDesc, args);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, (NSCalendar *)calendar, _diffComponents:startingAT :resultAT :options :(const unsigned char *)componentDesc :args);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     int32_t idx, cnt = strlen((char *)componentDesc);
@@ -1487,6 +1508,7 @@ Boolean CFCalendarGetComponentDifference(CFCalendarRef calendar, CFAbsoluteTime 
 Boolean CFCalendarGetTimeRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit unit, CFAbsoluteTime at, CFAbsoluteTime *startp, CFTimeInterval *tip) {
     __CFCalendarValidateAndCapTimeRange(at);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, calendar, NSCalendar._rangeOfUnitStartTimeIntervalForAT, unit, startp, tip, at);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), Boolean, (NSCalendar *)calendar, _rangeOfUnit:(NSCalendarUnit)unit startTime:startp interval:tip forAT:at);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
 
@@ -2993,6 +3015,7 @@ C: for range, allowed in 10.6
 CFRange CFCalendarGetRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit smallerUnit, CFCalendarUnit biggerUnit, CFAbsoluteTime at) {
     __CFCalendarValidateAndCapTimeRange(at);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), CFRange, calendar, NSCalendar._rangeOfUnitInUnitForAT, smallerUnit, biggerUnit, at);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), CFRange, (NSCalendar *)calendar, _rangeOfUnit:(NSCalendarUnit)smallerUnit inUnit:(NSCalendarUnit)biggerUnit forAT:at);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return __CFCalendarGetRangeOfUnit3(calendar, smallerUnit, biggerUnit, at);
@@ -3001,6 +3024,7 @@ CFRange CFCalendarGetRangeOfUnit(CFCalendarRef calendar, CFCalendarUnit smallerU
 CFIndex CFCalendarGetOrdinalityOfUnit(CFCalendarRef calendar, CFCalendarUnit smallerUnit, CFCalendarUnit biggerUnit, CFAbsoluteTime at) {
     __CFCalendarValidateAndCapTimeRange(at);
     // Note: We do not toll-free bridge for Swift
+    CF_SWIFT_FUNCDISPATCHV(CFCalendarGetTypeID(), CFIndex, calendar, NSCalendar._ordinalityOfUnitInUnitForAT, smallerUnit, biggerUnit, at);
     CF_OBJC_FUNCDISPATCHV(CFCalendarGetTypeID(), CFIndex, (NSCalendar *)calendar, _ordinalityOfUnit:(NSCalendarUnit)smallerUnit inUnit:(NSCalendarUnit)biggerUnit forAT:at);
     __CFGenericValidateType(calendar, CFCalendarGetTypeID());
     return __CFCalendarGetOrdinalityOfUnit3(calendar, smallerUnit, biggerUnit, at);

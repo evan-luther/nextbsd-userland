@@ -198,24 +198,28 @@ CFDateRef CFDateCreate(CFAllocatorRef allocator, CFAbsoluteTime at) {
 }
 
 CFTimeInterval CFDateGetAbsoluteTime(CFDateRef date) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFTimeInterval, date, NSDate.timeIntervalSinceReferenceDate);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFTimeInterval, (NSDate *)date, timeIntervalSinceReferenceDate);
     __CFGenericValidateType(date, CFDateGetTypeID());
     return date->_time;
 }
 
 CFTimeInterval CFDateGetTimeIntervalSinceDate(CFDateRef date, CFDateRef otherDate) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFTimeInterval, date, NSDate.timeIntervalSinceDate, otherDate);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFTimeInterval, (NSDate *)date, timeIntervalSinceDate:(NSDate *)otherDate);
     __CFGenericValidateType(date, CFDateGetTypeID());
     __CFGenericValidateType(otherDate, CFDateGetTypeID());
-    return date->_time - otherDate->_time;
+    return date->_time - CFDateGetAbsoluteTime(otherDate);
 }   
     
 CFComparisonResult CFDateCompare(CFDateRef date, CFDateRef otherDate, void *context) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFComparisonResult, date, NSDate.compare, otherDate);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFDate, CFComparisonResult, (NSDate *)date, compare:(NSDate *)otherDate);
     __CFGenericValidateType(date, CFDateGetTypeID());
     __CFGenericValidateType(otherDate, CFDateGetTypeID());
-    if (date->_time < otherDate->_time) return kCFCompareLessThan;
-    if (date->_time > otherDate->_time) return kCFCompareGreaterThan;
+    CFTimeInterval otherTime = CFDateGetAbsoluteTime(otherDate);
+    if (date->_time < otherTime) return kCFCompareLessThan;
+    if (date->_time > otherTime) return kCFCompareGreaterThan;
     return kCFCompareEqualTo;
 }
 

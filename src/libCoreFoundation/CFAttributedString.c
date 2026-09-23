@@ -158,7 +158,7 @@ CFMutableAttributedStringRef __CFAttributedStringCreateMutableWithSubstring(CFAl
     CFMutableAttributedStringRef newAttrStr = CFAttributedStringCreateMutable(alloc, 0);
 
     // Initialize the string (!!! this should be done more efficiently!) 
-    CFStringRef str = CFStringCreateWithSubstring(alloc, attrStr->string, range); 
+    CFStringRef str = CFStringCreateWithSubstring(alloc, CFAttributedStringGetString(attrStr), range); 
     CFAttributedStringReplaceString(newAttrStr, CFRangeMake(0, 0), str);
     CFRelease(str);
     
@@ -224,7 +224,7 @@ CFAttributedStringRef CFAttributedStringCreateCopy(CFAllocatorRef alloc, CFAttri
 //  CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFAttributedStringRef, (NSAttributedString *)attrStr, copy);
     
     __CFAssertIsAttributedString(attrStr);
-    if (!__CFAttributedStringIsMutable(attrStr) &&                                      // If the string is not mutable
+    if (!CF_IS_SWIFT(CFAttributedStringGetTypeID(), attrStr) && !__CFAttributedStringIsMutable(attrStr) && // If the string is not mutable
         ((alloc ? alloc : __CFGetDefaultAllocator()) == __CFGetAllocator(attrStr))) {   //  and it has the same allocator as the one we're using
 	CFRetain(attrStr);                                                              // Then just retain instead of making a true copy
 	return attrStr;
@@ -289,7 +289,7 @@ CFMutableAttributedStringRef CFAttributedStringCreateMutableCopy(CFAllocatorRef 
     __CFAssertIsAttributedString(attrStr);
 
     // !!! Need to deal with maxLength
-    return __CFAttributedStringCreateMutableWithSubstring(alloc, attrStr, CFRangeMake(0, CFStringGetLength(attrStr->string)));
+    return __CFAttributedStringCreateMutableWithSubstring(alloc, attrStr, CFRangeMake(0, CFAttributedStringGetLength(attrStr)));
 }
 
 
@@ -297,6 +297,7 @@ CFMutableAttributedStringRef CFAttributedStringCreateMutableCopy(CFAllocatorRef 
 /*** CFAttributedString functionality ***/
 
 CFStringRef CFAttributedStringGetString(CFAttributedStringRef attrStr) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFStringRef, attrStr, NSAttributedString.string);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFStringRef, (NSAttributedString *)attrStr, string);
     __CFAssertIsAttributedString(attrStr);
     
@@ -304,6 +305,7 @@ CFStringRef CFAttributedStringGetString(CFAttributedStringRef attrStr) {
 }
 
 CFIndex CFAttributedStringGetLength(CFAttributedStringRef attrStr) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFIndex, attrStr, NSAttributedString.length);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFIndex, (NSAttributedString *)attrStr, length);
     __CFAssertIsAttributedString(attrStr);
     
@@ -311,6 +313,7 @@ CFIndex CFAttributedStringGetLength(CFAttributedStringRef attrStr) {
 }
 
 CFDictionaryRef CFAttributedStringGetAttributes(CFAttributedStringRef attrStr, CFIndex loc, CFRange *effectiveRange) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFDictionaryRef, attrStr, NSAttributedString.attributesAtIndexEffectiveRange, loc, effectiveRange);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFDictionaryRef, (NSAttributedString *)attrStr, attributesAtIndex:(NSUInteger)loc effectiveRange:(NSRange *)effectiveRange);
     __CFAssertIsAttributedString(attrStr);
     __CFAssertIndexIsInBounds(attrStr, loc);
@@ -319,6 +322,7 @@ CFDictionaryRef CFAttributedStringGetAttributes(CFAttributedStringRef attrStr, C
 }
 
 CFTypeRef CFAttributedStringGetAttribute(CFAttributedStringRef attrStr, CFIndex loc, CFStringRef attrName, CFRange *effectiveRange) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFTypeRef, attrStr, NSAttributedString.attributeAtIndexEffectiveRange, attrName, loc, effectiveRange);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFTypeRef, (NSAttributedString *)attrStr, attribute:(NSString *)attrName atIndex:(NSUInteger)loc effectiveRange:(NSRange *)effectiveRange);
     __CFAssertIsAttributedString(attrStr);
     __CFAssertIndexIsInBounds(attrStr, loc);
@@ -328,6 +332,7 @@ CFTypeRef CFAttributedStringGetAttribute(CFAttributedStringRef attrStr, CFIndex 
 }
 
 CFDictionaryRef CFAttributedStringGetAttributesAndLongestEffectiveRange(CFAttributedStringRef attrStr, CFIndex location, CFRange rangeLimit, CFRange *longestEffectiveRange) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFDictionaryRef, attrStr, NSAttributedString.attributesAtIndexLongestEffectiveRangeInRange, location, longestEffectiveRange, rangeLimit);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFDictionaryRef, (NSAttributedString *)attrStr, attributesAtIndex:(NSUInteger)location longestEffectiveRange:(NSRange *)longestEffectiveRange inRange:NSMakeRange(rangeLimit.location, rangeLimit.length));
     __CFAssertIsAttributedString(attrStr);
     __CFAssertRangeIsInBounds(attrStr, rangeLimit.location, rangeLimit.length);
@@ -363,6 +368,7 @@ CFDictionaryRef CFAttributedStringGetAttributesAndLongestEffectiveRange(CFAttrib
 }
 
 CFTypeRef CFAttributedStringGetAttributeAndLongestEffectiveRange(CFAttributedStringRef attrStr, CFIndex location, CFStringRef attrName, CFRange rangeLimit, CFRange *longestEffectiveRange) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFTypeRef, attrStr, NSAttributedString.attributeAtIndexLongestEffectiveRangeInRange, attrName, location, longestEffectiveRange, rangeLimit);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFTypeRef, (NSAttributedString *)attrStr, attribute:(NSString *)attrName atIndex:(NSUInteger)location longestEffectiveRange:(NSRange *)longestEffectiveRange inRange: NSMakeRange(rangeLimit.location, rangeLimit.length));
     __CFAssertIsAttributedString(attrStr);
     __CFAssertRangeIsInBounds(attrStr, rangeLimit.location, rangeLimit.length);
@@ -438,11 +444,13 @@ static void __CFDictionaryAddMultiple(CFMutableDictionaryRef dict, CFTypeRef *ke
 /* ??? This is not properly implemented at this point! We need to return a proxy
 */
 CFMutableStringRef CFAttributedStringGetMutableString(CFMutableAttributedStringRef attrStr) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFMutableStringRef, attrStr, NSMutableAttributedString.mutableString);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), CFMutableStringRef, (NSMutableAttributedString *)attrStr, mutableString);
     return NULL;  /* (CFMutableStringRef)(attrStr->string); */
 }
 
 void CFAttributedStringReplaceString(CFMutableAttributedStringRef attrStr, CFRange range, CFStringRef replacement) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.replaceCharactersInRangeWithString, range, replacement);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, replaceCharactersInRange:NSMakeRange(range.location, range.length) withString:(NSString *)replacement);
     __CFAssertIsAttributedStringAndMutable(attrStr);
     __CFAssertRangeIsInBounds(attrStr, range.location, range.length);
@@ -476,8 +484,10 @@ void CFAttributedStringReplaceString(CFMutableAttributedStringRef attrStr, CFRan
 
 void CFAttributedStringSetAttributes(CFMutableAttributedStringRef attrStr, CFRange range, CFDictionaryRef replacementAttrs, Boolean clearOtherAttributes) {
     if (clearOtherAttributes) {
+        CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.setAttributesRange, replacementAttrs, range);
         CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, setAttributes:(NSDictionary *)replacementAttrs range: NSMakeRange(range.location, range.length));
     } else {
+        CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.addAttributesRange, replacementAttrs, range);
         CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, addAttributes:(NSDictionary *)replacementAttrs range: NSMakeRange(range.location, range.length));
     }
     
@@ -536,6 +546,7 @@ void CFAttributedStringSetAttributes(CFMutableAttributedStringRef attrStr, CFRan
 }
 
 void CFAttributedStringSetAttribute(CFMutableAttributedStringRef attrStr, CFRange range, CFStringRef attrName, CFTypeRef value) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.addAttributeValueRange, attrName, value, range);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, addAttribute:(NSString *)attrName value:(id) value range:NSMakeRange(range.location, range.length));
     __CFAssertIsAttributedStringAndMutable(attrStr);
     __CFAssertRangeIsInBounds(attrStr, range.location, range.length);
@@ -577,6 +588,7 @@ void CFAttributedStringSetAttribute(CFMutableAttributedStringRef attrStr, CFRang
 }
 
 void CFAttributedStringRemoveAttribute(CFMutableAttributedStringRef attrStr, CFRange range, CFStringRef attrName) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.removeAttributeRange, attrName, range);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, removeAttribute:(NSString *)attrName range:NSMakeRange(range.location, range.length));
     __CFAssertIsAttributedStringAndMutable(attrStr);
     __CFAssertRangeIsInBounds(attrStr, range.location, range.length);
@@ -616,6 +628,7 @@ void CFAttributedStringRemoveAttribute(CFMutableAttributedStringRef attrStr, CFR
 }
 
 void CFAttributedStringReplaceAttributedString(CFMutableAttributedStringRef attrStr, CFRange range, CFAttributedStringRef replacement) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.replaceCharactersInRangeWithAttributedString, range, replacement);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, replaceCharactersInRange:NSMakeRange(range.location, range.length) withAttributedString:(NSAttributedString *)replacement);
     __CFAssertIsAttributedStringAndMutable(attrStr);
     __CFAssertRangeIsInBounds(attrStr, range.location, range.length);
@@ -640,10 +653,12 @@ void CFAttributedStringReplaceAttributedString(CFMutableAttributedStringRef attr
 }
 
 void CFAttributedStringBeginEditing(CFMutableAttributedStringRef attrStr) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.beginEditing);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, beginEditing);
 }
 
 void CFAttributedStringEndEditing(CFMutableAttributedStringRef attrStr) {
+    CF_SWIFT_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, attrStr, NSMutableAttributedString.endEditing);
     CF_OBJC_FUNCDISPATCHV(CFAttributedStringGetTypeID(), void, (NSMutableAttributedString *)attrStr, endEditing);
 }
 
@@ -653,12 +668,12 @@ void CFAttributedStringEndEditing(CFMutableAttributedStringRef attrStr) {
 
 
 CFIndex _CFAttributedStringGetLength(CFAttributedStringRef attrStr) {
-    return CFStringGetLength(attrStr->string);
+    return CFAttributedStringGetLength(attrStr);
 }
 
 
 int _CFAttributedStringCheckAndReplace(CFMutableAttributedStringRef attrStr, CFRange range, CFStringRef replacement) {
-    CFIndex len = CFStringGetLength(attrStr->string);
+    CFIndex len = CFAttributedStringGetLength(attrStr);
     if (range.location > len || (range.location + range.length > len)) return _CFStringErrBounds;
     if (!__CFAttributedStringIsMutable(attrStr)) return _CFStringErrNotMutable;
     CFAttributedStringReplaceString(attrStr, range, replacement);   // ??? Do this faster!
@@ -666,7 +681,7 @@ int _CFAttributedStringCheckAndReplace(CFMutableAttributedStringRef attrStr, CFR
 }
 
 int _CFAttributedStringCheckAndReplaceAttributed(CFMutableAttributedStringRef attrStr, CFRange range, CFAttributedStringRef replacement) {
-    CFIndex len = CFStringGetLength(attrStr->string);
+    CFIndex len = CFAttributedStringGetLength(attrStr);
     if (range.location > len || (range.location + range.length > len)) return _CFStringErrBounds;
     if (!__CFAttributedStringIsMutable(attrStr)) return _CFStringErrNotMutable;
     if (replacement) {  // Special: NULL means delete
@@ -678,7 +693,7 @@ int _CFAttributedStringCheckAndReplaceAttributed(CFMutableAttributedStringRef at
 }
 
 int _CFAttributedStringCheckAndSetAttributes(CFMutableAttributedStringRef attrStr, CFRange range, CFTypeRef attrOrAttrs, Boolean clearOthers) {
-    CFIndex len = CFStringGetLength(attrStr->string);
+    CFIndex len = CFAttributedStringGetLength(attrStr);
     if (range.location > len || (range.location + range.length > len)) return _CFStringErrBounds;
     if (!__CFAttributedStringIsMutable(attrStr)) return _CFStringErrNotMutable;
     CFAttributedStringSetAttributes(attrStr, range, (CFDictionaryRef)attrOrAttrs, clearOthers);  // ??? Do this faster!
@@ -686,7 +701,7 @@ int _CFAttributedStringCheckAndSetAttributes(CFMutableAttributedStringRef attrSt
 }
 
 int _CFAttributedStringCheckAndSetAttribute(CFMutableAttributedStringRef attrStr, CFRange range, CFStringRef attrName, CFTypeRef attr) {
-    CFIndex len = CFStringGetLength(attrStr->string);
+    CFIndex len = CFAttributedStringGetLength(attrStr);
     if (range.location > len || (range.location + range.length > len)) return _CFStringErrBounds;
     if (!__CFAttributedStringIsMutable(attrStr)) return _CFStringErrNotMutable;
     if (!attrName) return _CFStringErrNilArg;

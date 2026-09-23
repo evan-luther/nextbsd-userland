@@ -183,6 +183,7 @@ static CFDictionaryRef _CFErrorCreateEmptyDictionary(CFAllocatorRef allocator) {
 /* A non-retained accessor for the userInfo. Might return NULL in some cases, if the subclass of NSError returned nil for some reason. It works with a CF or NSError.
 */
 static CFDictionaryRef _CFErrorGetUserInfo(CFErrorRef err) {
+    CF_SWIFT_FUNCDISPATCHV(CFErrorGetTypeID(), CFDictionaryRef, err, NSError.userInfo);
     CF_OBJC_FUNCDISPATCHV(CFErrorGetTypeID(), CFDictionaryRef, (NSError *)err, userInfo);
     __CFAssertIsError(err);
     return err->userInfo;
@@ -433,12 +434,14 @@ CFErrorRef CFErrorCreateWithUserInfoKeysAndValues(CFAllocatorRef allocator, CFSt
 }
 
 CFStringRef CFErrorGetDomain(CFErrorRef err) {
+    CF_SWIFT_FUNCDISPATCHV(CFErrorGetTypeID(), CFStringRef, err, NSError.domain);
     CF_OBJC_FUNCDISPATCHV(CFErrorGetTypeID(), CFStringRef, (NSError *)err, domain);
     __CFAssertIsError(err);
     return err->domain;
 }
 
 CFIndex CFErrorGetCode(CFErrorRef err) {
+    CF_SWIFT_FUNCDISPATCHV(CFErrorGetTypeID(), CFIndex, err, NSError.code);
     CF_OBJC_FUNCDISPATCHV(CFErrorGetTypeID(), CFIndex, (NSError *)err, code);
     __CFAssertIsError(err);
     return err->code;
@@ -450,8 +453,11 @@ CFDictionaryRef CFErrorCopyUserInfo(CFErrorRef err) {
     CFDictionaryRef userInfo = _CFErrorGetUserInfo(err);
     return userInfo ? (CFDictionaryRef)CFRetain(userInfo) : _CFErrorCreateEmptyDictionary(CFGetAllocator(err));
 }
-
 CFStringRef CFErrorCopyDescription(CFErrorRef err) {
+    if (CF_IS_SWIFT(CFErrorGetTypeID(), err)) {
+        CFStringRef desc = __CFSwiftBridge.NSError.localizedDescription(err);
+        return desc ? (CFStringRef)CFRetain(desc) : NULL;
+    }
     if (CF_IS_OBJC(CFErrorGetTypeID(), err)) {  // Since we have to return a retained result, we need to treat the toll-free bridging specially
         CFStringRef desc = (CFStringRef) CF_OBJC_CALLV((NSError *)err, localizedDescription);
         return desc ? (CFStringRef)CFRetain(desc) : NULL;    // !!! It really should never return nil.
@@ -461,6 +467,10 @@ CFStringRef CFErrorCopyDescription(CFErrorRef err) {
 }
 
 CFStringRef CFErrorCopyFailureReason(CFErrorRef err) {
+    if (CF_IS_SWIFT(CFErrorGetTypeID(), err)) {
+        CFStringRef str = __CFSwiftBridge.NSError.localizedFailureReason(err);
+        return str ? (CFStringRef)CFRetain(str) : NULL;
+    }
     if (CF_IS_OBJC(CFErrorGetTypeID(), err)) {  // Since we have to return a retained result, we need to treat the toll-free bridging specially
         CFStringRef str = (CFStringRef) CF_OBJC_CALLV((NSError *)err, localizedFailureReason);
         return str ? (CFStringRef)CFRetain(str) : NULL;    // It's possible for localizedFailureReason to return nil
@@ -470,6 +480,10 @@ CFStringRef CFErrorCopyFailureReason(CFErrorRef err) {
 }
 
 CFStringRef CFErrorCopyRecoverySuggestion(CFErrorRef err) {
+    if (CF_IS_SWIFT(CFErrorGetTypeID(), err)) {
+        CFStringRef str = __CFSwiftBridge.NSError.localizedRecoverySuggestion(err);
+        return str ? (CFStringRef)CFRetain(str) : NULL;
+    }
     if (CF_IS_OBJC(CFErrorGetTypeID(), err)) {  // Since we have to return a retained result, we need to treat the toll-free bridging specially
         CFStringRef str = (CFStringRef) CF_OBJC_CALLV((NSError *)err, localizedRecoverySuggestion);
         return str ? (CFStringRef)CFRetain(str) : NULL;    // It's possible for localizedRecoverySuggestion to return nil

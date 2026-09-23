@@ -254,7 +254,7 @@ Boolean CFDictionaryGetValueIfPresent(CFDictionaryRef hc, void const *key, void 
 }
 
 CFIndex CFDictionaryGetCountOfValue(CFDictionaryRef hc, void const *value) {
-    CF_SWIFT_FUNCDISPATCHV(CFDictionaryGetTypeID(), CFIndex, (CFSwiftRef)hc, NSDictionary.count);
+    CF_SWIFT_FUNCDISPATCHV(CFDictionaryGetTypeID(), CFIndex, (CFSwiftRef)hc, NSDictionary.countForObject, value);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFDictionary, CFIndex, (NSDictionary *)hc, countForObject:(id)value);
     __CFGenericValidateType(hc, CFDictionaryGetTypeID());
     return CFBasicHashGetCountOfValue((CFBasicHashRef)hc, (uintptr_t)value);

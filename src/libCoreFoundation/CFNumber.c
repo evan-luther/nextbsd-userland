@@ -133,6 +133,7 @@ CFTypeID CFBooleanGetTypeID(void) {
 }
 
 Boolean CFBooleanGetValue(CFBooleanRef boolean) {
+    CF_SWIFT_FUNCDISPATCHV(CFBooleanGetTypeID(), Boolean, boolean, NSNumber.boolValue);
     CF_OBJC_FUNCDISPATCHV(CFBooleanGetTypeID(), Boolean, (NSNumber *)boolean, boolValue);
     return (boolean == kCFBooleanTrue) ? true : false;
 }
@@ -1209,6 +1210,7 @@ CFNumberType CFNumberGetType(CFNumberRef number) {
 }
 
 CF_EXPORT CFNumberType _CFNumberGetType2(CFNumberRef number) {
+    CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFNumber, CFNumberType, (CFSwiftRef)number, NSNumber._cfNumberGetType);
     CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFNumber, CFNumberType, (NSNumber *)number, _cfNumberType);
     __CFAssertIsNumber(number);
     return __CFNumberGetType(number);
@@ -1244,20 +1246,22 @@ static CFComparisonResult CFNumberCompare_new(CFNumberRef number1, CFNumberRef n
     __CFAssertIsNumber(number1);
     __CFAssertIsNumber(number2);
 
-    CFNumberType type1 = __CFNumberGetType(number1);
-    CFNumberType type2 = __CFNumberGetType(number2);
+    // CFNumberGetType / CFNumberGetValue dispatch for foreign numbers, so
+    // the comparison below works unchanged on them.
+    CFNumberType type1 = CFNumberGetType(number1);
+    CFNumberType type2 = CFNumberGetType(number2);
     // Both numbers are integers
     if (!__CFNumberTypeTable[type1].floatBit && !__CFNumberTypeTable[type2].floatBit) {
         CFSInt128Struct i1, i2;
-        __CFNumberGetValue(number1, kCFNumberSInt128Type, &i1);
-        __CFNumberGetValue(number2, kCFNumberSInt128Type, &i2);
+        CFNumberGetValue(number1, kCFNumberSInt128Type, &i1);
+        CFNumberGetValue(number2, kCFNumberSInt128Type, &i2);
         return cmp128(&i1, &i2);
     }
     // Both numbers are floats
     if (__CFNumberTypeTable[type1].floatBit && __CFNumberTypeTable[type2].floatBit) {
 	Float64 d1, d2;
-        __CFNumberGetValue(number1, kCFNumberFloat64Type, &d1);
-        __CFNumberGetValue(number2, kCFNumberFloat64Type, &d2);
+        CFNumberGetValue(number1, kCFNumberFloat64Type, &d1);
+        CFNumberGetValue(number2, kCFNumberFloat64Type, &d2);
 	double s1 = copysign(1.0, d1);
 	double s2 = copysign(1.0, d2);
 	if (isnan(d1) && isnan(d2)) return kCFCompareEqualTo;
@@ -1284,7 +1288,7 @@ static CFComparisonResult CFNumberCompare_new(CFNumberRef number1, CFNumberRef n
     // If we just used double compare, that would make the 2^73 largest 128-bit
     // integers look equal, so we have to use integer comparison when possible.
     Float64 d1, d2;
-    __CFNumberGetValue(number1, kCFNumberFloat64Type, &d1);
+    CFNumberGetValue(number1, kCFNumberFloat64Type, &d1);
     // if the double value is really big, cannot be equal to integer
     // nan d1 will not compare true here
     if (d1 < FLOAT_NEGATIVE_2_TO_THE_127) {
@@ -1294,8 +1298,8 @@ static CFComparisonResult CFNumberCompare_new(CFNumberRef number1, CFNumberRef n
 	return !swapResult ? kCFCompareGreaterThan : kCFCompareLessThan;
     }
     CFSInt128Struct i1, i2;
-    __CFNumberGetValue(number1, kCFNumberSInt128Type, &i1);
-    __CFNumberGetValue(number2, kCFNumberSInt128Type, &i2);
+    CFNumberGetValue(number1, kCFNumberSInt128Type, &i1);
+    CFNumberGetValue(number2, kCFNumberSInt128Type, &i2);
     CFComparisonResult res = cmp128(&i1, &i2);
     if (kCFCompareEqualTo != res) {
 	return !swapResult ? res : -res;
@@ -1314,7 +1318,7 @@ static CFComparisonResult CFNumberCompare_new(CFNumberRef number1, CFNumberRef n
     if (s1 < s2) return !swapResult ? kCFCompareLessThan : kCFCompareGreaterThan;
     if (s2 < s1) return !swapResult ? kCFCompareGreaterThan : kCFCompareLessThan;
     // at this point, we know the signs are the same; do not combine these tests
-    __CFNumberGetValue(number2, kCFNumberFloat64Type, &d2);
+    CFNumberGetValue(number2, kCFNumberFloat64Type, &d2);
     if (d1 < d2) return !swapResult ? kCFCompareLessThan : kCFCompareGreaterThan;
     if (d2 < d1) return !swapResult ? kCFCompareGreaterThan : kCFCompareLessThan;
     return kCFCompareEqualTo;

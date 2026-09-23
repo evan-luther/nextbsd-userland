@@ -160,11 +160,13 @@ struct __CFLocale {
 };
  
 CF_PRIVATE Boolean __CFLocaleGetDoesNotRequireSpecialCaseHandling(struct __CFLocale *locale) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), Boolean, locale, NSLocale._doesNotRequireSpecialCaseHandling);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), Boolean, (NSLocale *)locale, _doesNotRequireSpecialCaseHandling);
     return locale->_doesNotRequireSpecialCaseHandling;
 }
 
 CF_PRIVATE void __CFLocaleSetDoesNotRequireSpecialCaseHandling(struct __CFLocale *locale) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), void, locale, NSLocale._setDoesNotRequireSpecialCaseHandling);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), void, (NSLocale *)locale, _setDoesNotRequireSpecialCaseHandling);
     locale->_doesNotRequireSpecialCaseHandling = true;
 }
@@ -779,6 +781,7 @@ CFLocaleRef CFLocaleCopyCurrent(void) {
 }
 
 CF_PRIVATE CFDictionaryRef __CFLocaleGetPrefs(CFLocaleRef locale) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), CFDictionaryRef, locale, NSLocale._prefs);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), CFDictionaryRef, (NSLocale *)locale, _prefs);
     return locale->_prefs;
 }
@@ -855,6 +858,7 @@ CFLocaleRef CFLocaleCreate(CFAllocatorRef allocator, CFStringRef identifier) {
 
 //CFLocaleCreateCopy() always just retained. This caused problems because CFLocaleGetValue(locale, kCFLocaleCalendarKey) would create a calendar, then set its locale to self, leading to a retain cycle
 static CFLocaleRef _CFLocaleCreateCopyGuts(CFAllocatorRef allocator, CFLocaleRef locale, CFStringRef calendarIdentifier) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), CFLocaleRef, locale, NSLocale.copy);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), CFLocaleRef, (NSLocale *)locale, copy);
     if (allocator == NULL) allocator = __CFGetDefaultAllocator();
     __CFGenericValidateType(allocator, CFAllocatorGetTypeID());
@@ -898,6 +902,7 @@ CF_PRIVATE CFLocaleRef _CFLocaleCreateCopyWithNewCalendarIdentifier(CFAllocatorR
 }
 
 CFStringRef CFLocaleGetIdentifier(CFLocaleRef locale) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), CFStringRef, locale, NSLocale.localeIdentifier);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), CFStringRef, (NSLocale *)locale, localeIdentifier);
     return locale->_identifier;
 }
@@ -912,6 +917,7 @@ CFTypeRef CFLocaleGetValue(CFLocaleRef locale, CFStringRef key) {
 	}
     }
 #endif
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), CFTypeRef, locale, NSLocale.objectForKey, key);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), CFTypeRef, (NSLocale *)locale, objectForKey:(id)key);
     CFIndex idx, slot = -1;
     for (idx = 0; idx < __kCFLocaleKeyTableCount; idx++) {
@@ -956,6 +962,7 @@ CFTypeRef CFLocaleGetValue(CFLocaleRef locale, CFStringRef key) {
 }
 
 CFStringRef CFLocaleCopyDisplayNameForPropertyValue(CFLocaleRef displayLocale, CFStringRef key, CFStringRef value) {
+    CF_SWIFT_FUNCDISPATCHV(CFLocaleGetTypeID(), CFStringRef, displayLocale, NSLocale._copyDisplayNameForKey, key, value);
     CF_OBJC_FUNCDISPATCHV(CFLocaleGetTypeID(), CFStringRef, (NSLocale *)displayLocale, _copyDisplayNameForKey:(id)key value:(id)value);
     CFIndex idx, slot = -1;
     for (idx = 0; idx < __kCFLocaleKeyTableCount; idx++) {

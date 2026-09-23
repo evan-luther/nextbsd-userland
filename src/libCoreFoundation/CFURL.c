@@ -1670,6 +1670,7 @@ const CFRuntimeClass __CFURLClass = {
 
 /* Toll-free bridging support; get the true CFURL from an NSURL */
 CF_INLINE CFURLRef _CFURLFromNSURL(CFURLRef url) {
+    CF_SWIFT_FUNCDISPATCHV(CFURLGetTypeID(), CFURLRef, url, NSURL._cfurl);
     CF_OBJC_FUNCDISPATCHV(CFURLGetTypeID(), CFURLRef, (NSURL *)url, _cfurl);
     return url;
 }
@@ -1684,7 +1685,7 @@ CF_PRIVATE void CFShowURL(CFURLRef url) {
         return;
     }
     fprintf(stdout, "<CFURL %p>{", (const void*)url);
-    if (CF_IS_OBJC(CFURLGetTypeID(), url)) {
+    if (CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url)) {
         fprintf(stdout, "ObjC bridged object}\n");
         return;
     }
@@ -2576,7 +2577,7 @@ CFURLRef CFURLCreateAbsoluteURLWithBytes(CFAllocatorRef alloc, const UInt8 *rela
                 if ( (ch == '?') || (ch == '#') // Nothing but query + fragment; append to the baseURL string
                     ) {
                     CFStringRef baseString;
-                    if (CF_IS_OBJC(CFURLGetTypeID(), baseURL)) {
+                    if (CF_IS_OBJC(CFURLGetTypeID(), baseURL) || CF_IS_SWIFT(CFURLGetTypeID(), baseURL)) {
                         baseString = CFURLGetString(baseURL);
                     } else {
                         baseString = baseURL->_string;
@@ -2608,13 +2609,13 @@ CFURLRef CFURLCreateAbsoluteURLWithBytes(CFAllocatorRef alloc, const UInt8 *rela
                         relString = relativeString;
                     }
                     if (!absString) {
-                        if (!CF_IS_OBJC(CFURLGetTypeID(), baseURL)) {
+                        if (!CF_IS_OBJC(CFURLGetTypeID(), baseURL) && !CF_IS_SWIFT(CFURLGetTypeID(), baseURL)) {
                             absString = resolveAbsoluteURLString(alloc, relString, relFlags, relRanges, baseURL->_string, baseURL->_flags, baseURL->_ranges);
                         } else {
                             CFStringRef baseString;
                             UInt32 baseFlags = 0;
                             CFRange baseRanges[MAX_COMPONENTS];
-                            if (CF_IS_OBJC(CFURLGetTypeID(), baseURL)) {
+                            if (CF_IS_OBJC(CFURLGetTypeID(), baseURL) || CF_IS_SWIFT(CFURLGetTypeID(), baseURL)) {
                                 baseString = CFURLGetString(baseURL);
                             } else {
                                 baseString = baseURL->_string;
@@ -2922,6 +2923,11 @@ CFURLRef CFURLCopyAbsoluteURL(CFURLRef  relativeURL) {
 #endif
     
     CFAssert1(relativeURL != NULL, __kCFLogAssertion, "%s(): Cannot create an absolute URL from a NULL relative URL", __PRETTY_FUNCTION__);
+    if (CF_IS_SWIFT(CFURLGetTypeID(), relativeURL)) {
+        anURL = __CFSwiftBridge.NSURL.absoluteURL(relativeURL);
+        if (anURL) CFRetain(anURL);
+        return anURL;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), relativeURL)) {
         anURL = (CFURLRef) CF_OBJC_CALLV((NSURL *)relativeURL, absoluteURL);
         if (anURL) CFRetain(anURL);
@@ -2946,7 +2952,7 @@ CFURLRef CFURLCopyAbsoluteURL(CFURLRef  relativeURL) {
     }
 #endif
     
-    baseIsObjC = CF_IS_OBJC(CFURLGetTypeID(), base);
+    baseIsObjC = CF_IS_OBJC(CFURLGetTypeID(), base) || CF_IS_SWIFT(CFURLGetTypeID(), base);
 
     if (!baseIsObjC) {
         baseString = base->_string;
@@ -2985,6 +2991,7 @@ CFURLRef CFURLCopyAbsoluteURL(CFURLRef  relativeURL) {
 /* Basic accessors */
 /*******************/
 CFStringEncoding _CFURLGetEncoding(CFURLRef url) {
+    url = _CFURLFromNSURL(url);
     return url->_encoding;
 }
 
@@ -2995,6 +3002,7 @@ Boolean CFURLCanBeDecomposed(CFURLRef  anURL) {
 }
 
 CFStringRef  CFURLGetString(CFURLRef  url) {
+    CF_SWIFT_FUNCDISPATCHV(CFURLGetTypeID(), CFStringRef, url, NSURL.relativeString);
     CF_OBJC_FUNCDISPATCHV(CFURLGetTypeID(), CFStringRef, (NSURL *)url, relativeString);
     if (url->_flags & ORIGINAL_AND_URL_STRINGS_MATCH) {
         return url->_string;
@@ -3007,7 +3015,7 @@ CFIndex CFURLGetBytes(CFURLRef url, UInt8 *buffer, CFIndex bufferLength) {
     CFIndex length, charsConverted, usedLength;
     CFStringRef string;
     CFStringEncoding enc;
-    if (CF_IS_OBJC(CFURLGetTypeID(), url)) {
+    if (CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url)) {
         string = CFURLGetString(url);
         enc = kCFStringEncodingUTF8;
     } else {
@@ -3026,7 +3034,7 @@ CFIndex CFURLGetBytes(CFURLRef url, UInt8 *buffer, CFIndex bufferLength) {
 CFIndex CFURLGetBytesUsingEncoding(CFURLRef url, UInt8 *buffer, CFIndex bufferLength, CFStringEncoding enc) {
     CFIndex length, charsConverted, usedLength;
     CFStringRef string;
-    if (CF_IS_OBJC(CFURLGetTypeID(), url)) {
+    if (CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url)) {
         string = CFURLGetString(url);
     } else {
         string = url->_string;
@@ -3041,6 +3049,7 @@ CFIndex CFURLGetBytesUsingEncoding(CFURLRef url, UInt8 *buffer, CFIndex bufferLe
 }
 
 CFURLRef  CFURLGetBaseURL(CFURLRef  anURL) {
+    CF_SWIFT_FUNCDISPATCHV(CFURLGetTypeID(), CFURLRef, anURL, NSURL.baseURL);
     CF_OBJC_FUNCDISPATCHV(CFURLGetTypeID(), CFURLRef, (NSURL *)anURL, baseURL);
     return anURL->_base;
 }
@@ -3129,7 +3138,13 @@ static CFStringRef _retainedComponentString(CFURLRef url, UInt32 compFlag, Boole
 
 CFStringRef  CFURLCopyScheme(CFURLRef  anURL) {
     CFStringRef scheme;
-    if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        scheme = __CFSwiftBridge.NSURL.scheme(anURL);
+        if ( scheme ) {
+            CFRetain(scheme);
+        }
+    }
+    else if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         scheme = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, scheme);
         if ( scheme ) {
             CFRetain(scheme);
@@ -3355,6 +3370,11 @@ CFStringRef  CFURLCopyResourceSpecifier(CFURLRef  anURL) {
 CFStringRef  CFURLCopyHostName(CFURLRef  anURL) {
     assert(anURL);
     CFStringRef tmp;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        tmp = __CFSwiftBridge.NSURL.host(anURL);
+        if (tmp) CFRetain(tmp);
+        return tmp;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         tmp = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, host);
         if (tmp) CFRetain(tmp);
@@ -3382,6 +3402,12 @@ CFStringRef  CFURLCopyHostName(CFURLRef  anURL) {
 SInt32 CFURLGetPortNumber(CFURLRef  anURL) {
     assert(anURL);
     CFStringRef port;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        CFNumberRef cfPort = __CFSwiftBridge.NSURL.port(anURL);
+        SInt32 num;
+        if (cfPort && CFNumberGetValue(cfPort, kCFNumberSInt32Type, &num)) return num;
+        return -1;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         CFNumberRef cfPort = (CFNumberRef) CF_OBJC_CALLV((NSURL *)anURL, port);
         SInt32 num;
@@ -3410,6 +3436,11 @@ SInt32 CFURLGetPortNumber(CFURLRef  anURL) {
 CFStringRef  CFURLCopyUserName(CFURLRef  anURL) {
     assert(anURL);
     CFStringRef user;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        user = __CFSwiftBridge.NSURL.user(anURL);
+        if (user) CFRetain(user);
+        return user;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         user = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, user);
         if (user) CFRetain(user);
@@ -3429,6 +3460,11 @@ CFStringRef  CFURLCopyUserName(CFURLRef  anURL) {
 CFStringRef  CFURLCopyPassword(CFURLRef  anURL) {
     assert(anURL);
     CFStringRef passwd;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        passwd = __CFSwiftBridge.NSURL.password(anURL);
+        if (passwd) CFRetain(passwd);
+        return passwd;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         passwd = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, password);
         if (passwd) CFRetain(passwd);
@@ -3458,6 +3494,11 @@ CFStringRef  CFURLCopyParameterString(CFURLRef  anURL, CFStringRef charactersToL
 static CFStringRef  _unescapedQueryString(CFURLRef  anURL) CF_RETURNS_RETAINED {
     assert(anURL);
     CFStringRef str;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        str = __CFSwiftBridge.NSURL.query(anURL);
+        if (str) CFRetain(str);
+        return str;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         str = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, query);
         if (str) CFRetain(str);
@@ -3478,7 +3519,7 @@ CFStringRef  CFURLCopyQueryString(CFURLRef  anURL, CFStringRef  charactersToLeav
     CFStringRef  query = _unescapedQueryString(anURL);
     if (query) {
         CFStringRef tmp;
-        if (anURL->_encoding == kCFStringEncodingUTF8) {
+        if (CF_IS_SWIFT(CFURLGetTypeID(), anURL) || anURL->_encoding == kCFStringEncodingUTF8) {
             tmp = CFURLCreateStringByReplacingPercentEscapes(CFGetAllocator(anURL), query, charactersToLeaveEscaped);
         } else {
 #pragma GCC diagnostic push
@@ -3495,6 +3536,11 @@ CFStringRef  CFURLCopyQueryString(CFURLRef  anURL, CFStringRef  charactersToLeav
 // Fragments are NEVER taken from a base URL
 static CFStringRef  _unescapedFragment(CFURLRef  anURL) CF_RETURNS_RETAINED {
     CFStringRef str;
+    if (CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
+        str = __CFSwiftBridge.NSURL.fragment(anURL);
+        if (str) CFRetain(str);
+        return str;
+    }
     if (CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
         str = (CFStringRef) CF_OBJC_CALLV((NSURL *)anURL, fragment);
         if (str) CFRetain(str);
@@ -3509,7 +3555,7 @@ CFStringRef  CFURLCopyFragment(CFURLRef  anURL, CFStringRef  charactersToLeaveEs
     CFStringRef  fragment = _unescapedFragment(anURL);
     if (fragment) {
         CFStringRef tmp;
-        if (anURL->_encoding == kCFStringEncodingUTF8) {
+        if (CF_IS_SWIFT(CFURLGetTypeID(), anURL) || anURL->_encoding == kCFStringEncodingUTF8) {
             tmp = CFURLCreateStringByReplacingPercentEscapes(CFGetAllocator(anURL), fragment, charactersToLeaveEscaped);
         } else {
 #pragma GCC diagnostic push
@@ -4437,7 +4483,7 @@ CF_EXPORT CFStringRef CFURLCopyFileSystemPath(CFURLRef anURL, CFURLPathStyle pat
     Boolean isCanonicalFileURL = false;
     
     if ( (pathStyle == kCFURLPOSIXPathStyle) && (CFURLGetBaseURL(anURL) == NULL) ) {
-        if ( !CF_IS_OBJC(CFURLGetTypeID(), anURL) ) {
+        if ( !CF_IS_OBJC(CFURLGetTypeID(), anURL) && !CF_IS_SWIFT(CFURLGetTypeID(), anURL) ) {
             // We can access the ivars
             isCanonicalFileURL = ((anURL->_flags & IS_CANONICAL_FILE_URL) != 0);
             if ( isCanonicalFileURL ) {
@@ -4478,7 +4524,7 @@ CFStringRef CFURLCreateStringWithFileSystemPath(CFAllocatorRef allocator, CFURLR
     CFStringRef basePath = base ? CFURLCreateStringWithFileSystemPath(allocator, base, fsType, false) : NULL;
     CFStringRef relPath = NULL;
     
-    if (!CF_IS_OBJC(CFURLGetTypeID(), anURL)) {
+    if (!CF_IS_OBJC(CFURLGetTypeID(), anURL) && !CF_IS_SWIFT(CFURLGetTypeID(), anURL)) {
         // We can access the ivars
         if (fsType == kCFURLPOSIXPathStyle) {
             if (anURL->_flags & POSIX_AND_URL_PATHS_MATCH) {
@@ -4603,7 +4649,7 @@ Boolean CFURLGetFileSystemRepresentation(CFURLRef url, Boolean resolveAgainstBas
     }
 #else
     if ( !resolveAgainstBase || (CFURLGetBaseURL(url) == NULL) ) {
-        if (!CF_IS_OBJC(CFURLGetTypeID(), url)) {
+        if (!CF_IS_OBJC(CFURLGetTypeID(), url) && !CF_IS_SWIFT(CFURLGetTypeID(), url)) {
             // We can access the ivars
             if ( url->_flags & IS_CANONICAL_FILE_URL ) {
                 return CanonicalFileURLStringToFileSystemRepresentation(url->_string, buffer, bufLen);
@@ -4694,7 +4740,7 @@ static CFRange _rangeOfLastPathComponent(CFURLRef url) {
 CFStringRef CFURLCopyLastPathComponent(CFURLRef url) {
     CFStringRef result;
 
-    if (CF_IS_OBJC(CFURLGetTypeID(), url)) {
+    if (CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url)) {
         CFStringRef path = CFURLCreateStringWithFileSystemPath(CFGetAllocator(url), url, kCFURLPOSIXPathStyle, false);
         CFIndex length;
         CFRange rg, compRg;
@@ -4807,7 +4853,7 @@ static Boolean _CFURLHasFileURLScheme(CFURLRef url, Boolean *hasScheme)
         result = _CFURLHasFileURLScheme(baseURL, hasScheme);
     }
     else {
-        if ( CF_IS_OBJC(CFURLGetTypeID(), url) || (_getSchemeTypeFromFlags(url->_flags) == kHasUncommonScheme) ) {
+        if ( CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url) || (_getSchemeTypeFromFlags(url->_flags) == kHasUncommonScheme) ) {
             // if it's not a CFURL or the scheme is not a common canonical-form scheme, determine the scheme the slower way.
             CFStringRef scheme = CFURLCopyScheme(url);
             if ( scheme ) {
@@ -5114,7 +5160,7 @@ static void __CFURLCopyPropertyListKeysAndValues(CFURLRef url, CFTypeRef *keys, 
     keys[1] = CFSTR("_CFURLString");
     keys[2] = CFSTR("_CFURLBaseStringType");
     keys[3] = CFSTR("_CFURLBaseURLString");
-    if (CF_IS_OBJC(CFURLGetTypeID(), url)) {
+    if (CF_IS_OBJC(CFURLGetTypeID(), url) || CF_IS_SWIFT(CFURLGetTypeID(), url)) {
         SInt32 urlType = FULL_URL_REPRESENTATION;
         vals[0] = CFNumberCreate(alloc, kCFNumberSInt32Type, &urlType);
         vals[1] = CFURLGetString(url);
@@ -5124,7 +5170,7 @@ static void __CFURLCopyPropertyListKeysAndValues(CFURLRef url, CFTypeRef *keys, 
         vals[1] = CFRetain(url->_string);
     }
     if (base != NULL) {
-        if (CF_IS_OBJC(CFURLGetTypeID(), base)) {
+        if (CF_IS_OBJC(CFURLGetTypeID(), base) || CF_IS_SWIFT(CFURLGetTypeID(), base)) {
             SInt32 urlType = FULL_URL_REPRESENTATION;
             vals[2] = CFNumberCreate(alloc, kCFNumberSInt32Type, &urlType);
             vals[3] = CFURLGetString(base);
@@ -5217,7 +5263,10 @@ Boolean CFURLIsFileReferenceURL(CFURLRef url)
 	result = CFURLIsFileReferenceURL(baseURL);
     }
     else {
-        if ( CF_IS_OBJC(CFURLGetTypeID(), url) ) {
+        if ( CF_IS_SWIFT(CFURLGetTypeID(), url) ) {
+            result = __CFSwiftBridge.NSURL.isFileReferenceURL(url);
+        }
+        else if ( CF_IS_OBJC(CFURLGetTypeID(), url) ) {
             result = (Boolean) CF_OBJC_CALLV((NSURL *)url, isFileReferenceURL);
         }
         else {

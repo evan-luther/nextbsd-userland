@@ -4588,6 +4588,7 @@ CFRunLoopTimerRef CFRunLoopTimerCreateWithHandler(CFAllocatorRef allocator, CFAb
 
 CFAbsoluteTime CFRunLoopTimerGetNextFireDate(CFRunLoopTimerRef rlt) {
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFAbsoluteTime, rlt, NSTimer._cffireTime);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFAbsoluteTime, (NSTimer *)rlt, _cffireTime);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     CFAbsoluteTime at = 0.0;
@@ -4600,8 +4601,12 @@ CFAbsoluteTime CFRunLoopTimerGetNextFireDate(CFRunLoopTimerRef rlt) {
 }
 
 void CFRunLoopTimerSetNextFireDate(CFRunLoopTimerRef rlt, CFAbsoluteTime fireDate) {
-    CF_ASSERT_TYPE(_kCFRuntimeIDCFRunLoopTimer, rlt);
     CHECK_FOR_FORK();
+    if (CF_IS_SWIFT(CFRunLoopTimerGetTypeID(), rlt)) {
+        __CFSwiftBridge.NSTimer.setFireDate(rlt, fireDate);
+        return;
+    }
+    CF_ASSERT_TYPE(_kCFRuntimeIDCFRunLoopTimer, rlt);
     if (!__CFIsValid(rlt)) return;
     if (TIMER_DATE_LIMIT < fireDate) fireDate = TIMER_DATE_LIMIT;
     uint64_t nextFireTSR = 0ULL;
@@ -4668,14 +4673,18 @@ void CFRunLoopTimerSetNextFireDate(CFRunLoopTimerRef rlt, CFAbsoluteTime fireDat
 
 CFTimeInterval CFRunLoopTimerGetInterval(CFRunLoopTimerRef rlt) {
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFTimeInterval, rlt, NSTimer.timeInterval);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFTimeInterval, (NSTimer *)rlt, timeInterval);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     return rlt->_interval;
 }
 
 Boolean CFRunLoopTimerDoesRepeat(CFRunLoopTimerRef rlt) {
-    CF_ASSERT_TYPE(_kCFRuntimeIDCFRunLoopTimer, rlt);
     CHECK_FOR_FORK();
+    if (CF_IS_SWIFT(CFRunLoopTimerGetTypeID(), rlt)) {
+        return (Boolean)(0.0 < __CFSwiftBridge.NSTimer.timeInterval(rlt));
+    }
+    CF_ASSERT_TYPE(_kCFRuntimeIDCFRunLoopTimer, rlt);
     return (0.0 < rlt->_interval);
 }
 
@@ -4687,6 +4696,7 @@ CFIndex CFRunLoopTimerGetOrder(CFRunLoopTimerRef rlt) {
 
 void CFRunLoopTimerInvalidate(CFRunLoopTimerRef rlt) {	/* DOES CALLOUT */
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), void, rlt, NSTimer.invalidate);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), void, (NSTimer *)rlt, invalidate);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     __CFRunLoopTimerLock(rlt);
@@ -4738,6 +4748,7 @@ void CFRunLoopTimerInvalidate(CFRunLoopTimerRef rlt) {	/* DOES CALLOUT */
 
 Boolean CFRunLoopTimerIsValid(CFRunLoopTimerRef rlt) {
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), Boolean, rlt, NSTimer.isValid);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), Boolean, (NSTimer *)rlt, isValid);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     return __CFIsValid(rlt);
@@ -4753,6 +4764,7 @@ void CFRunLoopTimerGetContext(CFRunLoopTimerRef rlt, CFRunLoopTimerContext *cont
 CFTimeInterval CFRunLoopTimerGetTolerance(CFRunLoopTimerRef rlt) {
 #if TARGET_OS_MAC
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFTimeInterval, rlt, NSTimer.tolerance);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), CFTimeInterval, (NSTimer *)rlt, tolerance);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     return rlt->_tolerance;
@@ -4764,6 +4776,7 @@ CFTimeInterval CFRunLoopTimerGetTolerance(CFRunLoopTimerRef rlt) {
 void CFRunLoopTimerSetTolerance(CFRunLoopTimerRef rlt, CFTimeInterval tolerance) {
 #if TARGET_OS_MAC
     CHECK_FOR_FORK();
+    CF_SWIFT_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), void, rlt, NSTimer.setTolerance, tolerance);
     CF_OBJC_FUNCDISPATCHV(CFRunLoopTimerGetTypeID(), void, (NSTimer *)rlt, setTolerance:tolerance);
     __CFGenericValidateType(rlt, CFRunLoopTimerGetTypeID());
     /*

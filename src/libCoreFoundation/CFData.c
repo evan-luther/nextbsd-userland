@@ -118,6 +118,15 @@ CF_INLINE Boolean __CFDataIsGrowable(CFDataRef data) {
     return __CFRuntimeGetFlag(data, __kCFGrowable);
 }
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// SPI for the foreign runtime's bridged data classes: mutation methods
+// must know whether the CF data they wrap is mutable.
+Boolean _CFDataIsMutable(CFDataRef data) {
+    if (NULL == data || _CFIsSwift(_kCFRuntimeIDCFData, (CFSwiftRef)data)) return false;
+    return __CFDataIsMutable(data);
+}
+#endif
+
 CF_INLINE Boolean __CFDataBytesInline(CFDataRef data) {
     return __CFRuntimeGetFlag(data, __kCFBytesInline);
 }

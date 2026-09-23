@@ -1506,12 +1506,14 @@ CFTimeZoneRef CFTimeZoneCreateWithName(CFAllocatorRef allocator, CFStringRef nam
 }
 
 CFStringRef CFTimeZoneGetName(CFTimeZoneRef tz) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFStringRef, tz, NSTimeZone.name);
     CF_OBJC_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFStringRef, (NSTimeZone *)tz, name);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
     return tz->_name;
 }
 
 CFDataRef CFTimeZoneGetData(CFTimeZoneRef tz) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFDataRef, tz, NSTimeZone.data);
     CF_OBJC_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFDataRef, (NSTimeZone *)tz, data);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
     return tz->_data;
@@ -1540,6 +1542,7 @@ BOOL __CFTimeZoneGetWin32SystemTime(SYSTEMTIME * sys_time, CFAbsoluteTime time)
 
 CFTimeInterval CFTimeZoneGetSecondsFromGMT(CFTimeZoneRef tz, CFAbsoluteTime at) {
     CFIndex idx;
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFTimeInterval, tz, NSTimeZone.secondsFromGMTForDate, at);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
     idx = __CFBSearchTZPeriods(tz, at);
     return __CFTZPeriodGMTOffset(&(tz->_periods[idx]));
@@ -1550,6 +1553,10 @@ extern UCalendar *__CFCalendarCreateUCalendar(CFStringRef calendarID, CFStringRe
 CFStringRef CFTimeZoneCopyAbbreviation(CFTimeZoneRef tz, CFAbsoluteTime at) {
     CFStringRef result;
     CFIndex idx;
+    if (CF_IS_SWIFT(CFTimeZoneGetTypeID(), tz)) {
+        result = __CFSwiftBridge.NSTimeZone.abbreviationForDate(tz, at);
+        return result ? (CFStringRef)CFRetain(result) : NULL;
+    }
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
 #if TARGET_OS_WIN32
     UErrorCode status = U_ZERO_ERROR;
@@ -1575,6 +1582,7 @@ CFStringRef CFTimeZoneCopyAbbreviation(CFTimeZoneRef tz, CFAbsoluteTime at) {
 }
 
 Boolean CFTimeZoneIsDaylightSavingTime(CFTimeZoneRef tz, CFAbsoluteTime at) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), Boolean, tz, NSTimeZone.isDaylightSavingTimeForDate, at);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
 #if TARGET_OS_WIN32
     UErrorCode status = U_ZERO_ERROR;
@@ -1594,6 +1602,7 @@ Boolean CFTimeZoneIsDaylightSavingTime(CFTimeZoneRef tz, CFAbsoluteTime at) {
 }
 
 CFTimeInterval CFTimeZoneGetDaylightSavingTimeOffset(CFTimeZoneRef tz, CFAbsoluteTime at) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFTimeInterval, tz, NSTimeZone._daylightSavingTimeOffsetForAbsoluteTime, at);
     CF_OBJC_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFTimeInterval, (NSTimeZone *)tz, _daylightSavingTimeOffsetForAbsoluteTime:at);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
     CFIndex idx = __CFBSearchTZPeriods(tz, at);
@@ -1609,6 +1618,7 @@ CFTimeInterval CFTimeZoneGetDaylightSavingTimeOffset(CFTimeZoneRef tz, CFAbsolut
 }
 
 CFAbsoluteTime CFTimeZoneGetNextDaylightSavingTimeTransition(CFTimeZoneRef tz, CFAbsoluteTime at) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFAbsoluteTime, tz, NSTimeZone._nextDaylightSavingTimeTransitionAfterAbsoluteTime, at);
     CF_OBJC_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFTimeInterval, (NSTimeZone *)tz, _nextDaylightSavingTimeTransitionAfterAbsoluteTime:at);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
 #if TARGET_OS_WIN32
@@ -1637,6 +1647,7 @@ CFAbsoluteTime CFTimeZoneGetNextDaylightSavingTimeTransition(CFTimeZoneRef tz, C
 #define BUFFER_SIZE 768
 
 CFStringRef CFTimeZoneCopyLocalizedName(CFTimeZoneRef tz, CFTimeZoneNameStyle style, CFLocaleRef locale) {
+    CF_SWIFT_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFStringRef, tz, NSTimeZone.localizedName, style, locale);
     CF_OBJC_FUNCDISPATCHV(CFTimeZoneGetTypeID(), CFStringRef, (NSTimeZone *)tz, localizedName:(NSTimeZoneNameStyle)style locale:(NSLocale *)locale);
     __CFGenericValidateType(tz, CFTimeZoneGetTypeID());
     __CFGenericValidateType(locale, CFLocaleGetTypeID());

@@ -110,6 +110,7 @@
 #endif // TARGET_OS_LINUX
 
 #include <stdlib.h>
+#include <stdarg.h>
 
 
 _CF_EXPORT_SCOPE_BEGIN
@@ -280,6 +281,124 @@ struct _NSURLBridge {
     void (*_Nonnull clearResourcePropertyCache)(CFTypeRef url);
     void (*_Nonnull setTemporaryResourceValueForKey)(CFTypeRef url, CFStringRef key, CFTypeRef propertyValue);
     Boolean (*_Nonnull resourceIsReachable)(CFTypeRef url, CFErrorRef *error);
+    /* Foreign-runtime additions (CF_BRIDGE_FOREIGN_RUNTIME): the
+     * CF_OBJC_* dispatch sites that have no Swift hook. Swift Foundation
+     * leaves these NULL. _cfurl returns the backing CFURL (+0); the
+     * component getters return +0 and CF retains where the CF function
+     * returns +1. */
+    _Nonnull CFURLRef (*_Nonnull _cfurl)(CFTypeRef url);
+    _Nullable CFURLRef (*_Nonnull absoluteURL)(CFTypeRef url);                  // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull relativeString)(CFTypeRef url);
+    _Nullable CFURLRef (*_Nonnull baseURL)(CFTypeRef url);
+    _Nullable CFStringRef (*_Nonnull scheme)(CFTypeRef url);                    // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull host)(CFTypeRef url);                      // +0; CF retains
+    _Nullable CFNumberRef (*_Nonnull port)(CFTypeRef url);
+    _Nullable CFStringRef (*_Nonnull user)(CFTypeRef url);                      // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull password)(CFTypeRef url);                  // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull query)(CFTypeRef url);                     // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull fragment)(CFTypeRef url);                  // +0; CF retains
+    Boolean (*_Nonnull isFileReferenceURL)(CFTypeRef url);
+
+};
+/* Foreign-runtime additions (CF_BRIDGE_FOREIGN_RUNTIME): hooks for the
+ * types swift-corelibs never needed because its Foundation classes wrap
+ * CF objects. One C function pointer per CF_OBJC_FUNCDISPATCHV /
+ * CF_OBJC_CALLV site's selector; the receiver is the foreign object.
+ * Swift Foundation leaves all of these NULL. Ownership follows the CF
+ * function's contract: hooks for "Copy" functions return a +1 object,
+ * hooks for "Get" functions return +0, and where CF retains the result
+ * itself (CFError's localized* strings, the CFURL component getters,
+ * CFTimeZoneCopyAbbreviation) the hook returns +0. */
+
+struct _NSDateBridge {
+    CFTimeInterval (*_Nonnull timeIntervalSinceReferenceDate)(CFTypeRef date);
+    CFTimeInterval (*_Nonnull timeIntervalSinceDate)(CFTypeRef date, CFTypeRef otherDate);
+    CFComparisonResult (*_Nonnull compare)(CFTypeRef date, CFTypeRef otherDate);
+};
+
+struct _NSErrorBridge {
+    _Nullable CFDictionaryRef (*_Nonnull userInfo)(CFTypeRef err);
+    _Nullable CFStringRef (*_Nonnull domain)(CFTypeRef err);
+    CFIndex (*_Nonnull code)(CFTypeRef err);
+    _Nullable CFStringRef (*_Nonnull localizedDescription)(CFTypeRef err);      // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull localizedFailureReason)(CFTypeRef err);    // +0; CF retains
+    _Nullable CFStringRef (*_Nonnull localizedRecoverySuggestion)(CFTypeRef err); // +0; CF retains
+};
+
+struct _NSLocaleBridge {
+    Boolean (*_Nonnull _doesNotRequireSpecialCaseHandling)(CFTypeRef locale);
+    void (*_Nonnull _setDoesNotRequireSpecialCaseHandling)(CFTypeRef locale);
+    _Nullable CFDictionaryRef (*_Nonnull _prefs)(CFTypeRef locale);
+    _Nonnull CFLocaleRef (*_Nonnull copy)(CFTypeRef locale);                    // returns +1
+    _Nullable CFStringRef (*_Nonnull localeIdentifier)(CFTypeRef locale);
+    _Nullable CFTypeRef (*_Nonnull objectForKey)(CFTypeRef locale, CFTypeRef key);
+    _Nullable CFStringRef (*_Nonnull _copyDisplayNameForKey)(CFTypeRef displayLocale, CFTypeRef key, CFTypeRef value); // returns +1
+};
+
+struct _NSTimeZoneBridge {
+    _Nullable CFStringRef (*_Nonnull name)(CFTypeRef tz);
+    _Nullable CFDataRef (*_Nonnull data)(CFTypeRef tz);
+    CFTimeInterval (*_Nonnull _daylightSavingTimeOffsetForAbsoluteTime)(CFTypeRef tz, CFAbsoluteTime at);
+    CFAbsoluteTime (*_Nonnull _nextDaylightSavingTimeTransitionAfterAbsoluteTime)(CFTypeRef tz, CFAbsoluteTime at);
+    _Nullable CFStringRef (*_Nonnull localizedName)(CFTypeRef tz, CFTimeZoneNameStyle style, CFTypeRef locale); // returns +1
+    CFTimeInterval (*_Nonnull secondsFromGMTForDate)(CFTypeRef tz, CFAbsoluteTime at);
+    _Nullable CFStringRef (*_Nonnull abbreviationForDate)(CFTypeRef tz, CFAbsoluteTime at); // +0; CF retains
+    Boolean (*_Nonnull isDaylightSavingTimeForDate)(CFTypeRef tz, CFAbsoluteTime at);
+};
+
+struct _NSCalendarBridge {
+    _Nullable CFStringRef (*_Nonnull calendarIdentifier)(CFTypeRef calendar);
+    _Nullable CFLocaleRef (*_Nonnull _copyLocale)(CFTypeRef calendar);          // returns +1
+    void (*_Nonnull setLocale)(CFTypeRef calendar, CFTypeRef locale);
+    _Nullable CFTimeZoneRef (*_Nonnull _copyTimeZone)(CFTypeRef calendar);      // returns +1
+    void (*_Nonnull setTimeZone)(CFTypeRef calendar, CFTypeRef tz);
+    CFIndex (*_Nonnull firstWeekday)(CFTypeRef calendar);
+    void (*_Nonnull setFirstWeekday)(CFTypeRef calendar, CFIndex wkdy);
+    CFIndex (*_Nonnull minimumDaysInFirstWeek)(CFTypeRef calendar);
+    void (*_Nonnull setMinimumDaysInFirstWeek)(CFTypeRef calendar, CFIndex mwd);
+    _Nullable CFDateRef (*_Nonnull _copyGregorianStartDate)(CFTypeRef calendar); // returns +1
+    void (*_Nonnull _setGregorianStartDate)(CFTypeRef calendar, CFTypeRef date);
+    CFRange (*_Nonnull _minimumRangeOfUnit)(CFTypeRef calendar, CFCalendarUnit unit);
+    CFRange (*_Nonnull _maximumRangeOfUnit)(CFTypeRef calendar, CFCalendarUnit unit);
+    /* The variadic selectors take the CF function's va_list. */
+    Boolean (*_Nonnull _composeAbsoluteTime)(CFTypeRef calendar, CFAbsoluteTime *atp, const char *componentDesc, va_list args);
+    Boolean (*_Nonnull _decomposeAbsoluteTime)(CFTypeRef calendar, CFAbsoluteTime at, const char *componentDesc, va_list args);
+    Boolean (*_Nonnull _addComponents)(CFTypeRef calendar, CFAbsoluteTime *atp, CFOptionFlags options, const char *componentDesc, va_list args);
+    Boolean (*_Nonnull _diffComponents)(CFTypeRef calendar, CFAbsoluteTime startingAT, CFAbsoluteTime resultAT, CFOptionFlags options, const char *componentDesc, va_list args);
+    Boolean (*_Nonnull _rangeOfUnitStartTimeIntervalForAT)(CFTypeRef calendar, CFCalendarUnit unit, CFAbsoluteTime *startp, CFTimeInterval *tip, CFAbsoluteTime at);
+    CFRange (*_Nonnull _rangeOfUnitInUnitForAT)(CFTypeRef calendar, CFCalendarUnit smallerUnit, CFCalendarUnit biggerUnit, CFAbsoluteTime at);
+    CFIndex (*_Nonnull _ordinalityOfUnitInUnitForAT)(CFTypeRef calendar, CFCalendarUnit smallerUnit, CFCalendarUnit biggerUnit, CFAbsoluteTime at);
+};
+
+struct _NSAttributedStringBridge {
+    _Nullable CFStringRef (*_Nonnull string)(CFTypeRef attrStr);
+    CFIndex (*_Nonnull length)(CFTypeRef attrStr);
+    _Nullable CFDictionaryRef (*_Nonnull attributesAtIndexEffectiveRange)(CFTypeRef attrStr, CFIndex loc, CFRange *effectiveRange);
+    _Nullable CFTypeRef (*_Nonnull attributeAtIndexEffectiveRange)(CFTypeRef attrStr, CFTypeRef attrName, CFIndex loc, CFRange *effectiveRange);
+    _Nullable CFDictionaryRef (*_Nonnull attributesAtIndexLongestEffectiveRangeInRange)(CFTypeRef attrStr, CFIndex location, CFRange *longestEffectiveRange, CFRange rangeLimit);
+    _Nullable CFTypeRef (*_Nonnull attributeAtIndexLongestEffectiveRangeInRange)(CFTypeRef attrStr, CFTypeRef attrName, CFIndex location, CFRange *longestEffectiveRange, CFRange rangeLimit);
+};
+
+struct _NSMutableAttributedStringBridge {
+    _Nullable CFMutableStringRef (*_Nonnull mutableString)(CFTypeRef attrStr);
+    void (*_Nonnull replaceCharactersInRangeWithString)(CFTypeRef attrStr, CFRange range, CFTypeRef replacement);
+    void (*_Nonnull setAttributesRange)(CFTypeRef attrStr, CFTypeRef replacementAttrs, CFRange range);
+    void (*_Nonnull addAttributesRange)(CFTypeRef attrStr, CFTypeRef replacementAttrs, CFRange range);
+    void (*_Nonnull addAttributeValueRange)(CFTypeRef attrStr, CFTypeRef attrName, CFTypeRef value, CFRange range);
+    void (*_Nonnull removeAttributeRange)(CFTypeRef attrStr, CFTypeRef attrName, CFRange range);
+    void (*_Nonnull replaceCharactersInRangeWithAttributedString)(CFTypeRef attrStr, CFRange range, CFTypeRef replacement);
+    void (*_Nonnull beginEditing)(CFTypeRef attrStr);
+    void (*_Nonnull endEditing)(CFTypeRef attrStr);
+};
+
+struct _NSTimerBridge {
+    CFAbsoluteTime (*_Nonnull _cffireTime)(CFTypeRef timer);
+    CFTimeInterval (*_Nonnull timeInterval)(CFTypeRef timer);
+    void (*_Nonnull invalidate)(CFTypeRef timer);
+    Boolean (*_Nonnull isValid)(CFTypeRef timer);
+    CFTimeInterval (*_Nonnull tolerance)(CFTypeRef timer);
+    void (*_Nonnull setTolerance)(CFTypeRef timer, CFTimeInterval tolerance);
+    void (*_Nonnull setFireDate)(CFTypeRef timer, CFAbsoluteTime date);
 };
 
 struct _CFSwiftBridge {
@@ -300,6 +419,16 @@ struct _CFSwiftBridge {
     struct _NSNumberBridge NSNumber;
     struct _NSDataBridge NSData;
     struct _NSURLBridge NSURL;
+    /* Foreign-runtime additions (CF_BRIDGE_FOREIGN_RUNTIME); Swift
+     * Foundation leaves these NULL. */
+    struct _NSDateBridge NSDate;
+    struct _NSErrorBridge NSError;
+    struct _NSLocaleBridge NSLocale;
+    struct _NSTimeZoneBridge NSTimeZone;
+    struct _NSCalendarBridge NSCalendar;
+    struct _NSAttributedStringBridge NSAttributedString;
+    struct _NSMutableAttributedStringBridge NSMutableAttributedString;
+    struct _NSTimerBridge NSTimer;
 };
 
 struct _NSCFXMLBridgeStrong {
@@ -374,6 +503,8 @@ CF_EXPORT void _CFRuntimeBridgeSetDefaultClass(const void *isa);
 // Mutability queries for bridged CF types (foreign-runtime bridge).
 CF_EXPORT Boolean _CFStringIsMutable(CFStringRef str);
 CF_EXPORT Boolean _CFArrayIsMutable(CFArrayRef array);
+CF_EXPORT Boolean _CFDataIsMutable(CFDataRef data);
+CF_EXPORT Boolean _CFCharacterSetIsMutable(CFCharacterSetRef cset);
 CF_EXPORT void _CFRuntimeBridgeTypeToClass(CFTypeID type, const void *isa);
 
 CF_EXPORT CFNumberType _CFNumberGetType2(CFNumberRef number);
