@@ -5,6 +5,7 @@
  *   - CF runtime alive (CFRetain / CFRelease, legacy non-Swift path)
  *   - CFDictionary + CFString basics
  *   - CFPropertyList XML round-trip (the primary feature)
+ *   - CFRunLoop timer and run timeout timing
  *
  * Prints COREFOUNDATION-OK on success, COREFOUNDATION-FAIL otherwise.
  * Exit 0 / 1 to match.
@@ -13,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 
@@ -21,6 +23,23 @@ fail(const char *msg)
 {
 	fprintf(stderr, "COREFOUNDATION-FAIL: %s\n", msg);
 	return 1;
+}
+
+static double
+monotonic(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
+static double fired_at;
+
+static void
+timer_fired(CFRunLoopTimerRef timer, void *info)
+{
+	(void)timer;
+	*(double *)info = monotonic();
 }
 
 int
@@ -119,6 +138,30 @@ main(void)
 	CFRelease(bin);
 	CFRelease(d);
 
-	printf("COREFOUNDATION-OK: CFDictionary + XML/binary plist round-trip succeeded\n");
+	/*
+	 * 3. Run loop timing. A 50 ms timer must fire and a 0.2 s
+	 *    CFRunLoopRunInMode must time out, each within a second.
+	 *    With the TSR rate derived from clock_getres a 24 MHz arm64
+	 *    timer stretched both 42-fold, and the run timeout depends on
+	 *    a second dispatch timer, which libmach once never delivered.
+	 */
+	double t0 = monotonic();
+	CFRunLoopTimerContext tctx = { 0, &fired_at, NULL, NULL, NULL };
+	CFRunLoopTimerRef timer = CFRunLoopTimerCreate(kCFAllocatorDefault,
+	    CFAbsoluteTimeGetCurrent() + 0.05, 0, 0, 0, timer_fired, &tctx);
+	CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, kCFRunLoopDefaultMode);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	CFRunLoopTimerInvalidate(timer);
+	CFRelease(timer);
+	if (fired_at == 0.0 || fired_at - t0 > 1.0)
+		return fail("50 ms CFRunLoopTimer did not fire within 1 s");
+	for (int i = 0; i < 2; i++) {
+		double r0 = monotonic();
+		CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.2, false);
+		if (monotonic() - r0 > 1.0)
+			return fail("0.2 s CFRunLoopRunInMode took over 1 s to time out");
+	}
+
+	printf("COREFOUNDATION-OK: CFDictionary + XML/binary plist round-trip and run loop timing succeeded\n");
 	return 0;
 }
