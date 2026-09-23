@@ -933,6 +933,25 @@ kevent_qos(int kq, const struct kevent_qos_s *changelist, int nchanges,
 		return (filled);
 	}
 
+	/*
+	 * On a KEVENT_FLAG_ERROR_EVENTS call, ask the kernel for a receipt per
+	 * change so it returns those receipts and dequeues nothing else. This
+	 * is libdispatch's own !DISPATCH_USE_KEVENT_QOS emulation of the flag
+	 * (event_kevent.c, _dispatch_kq_poll), compiled out here because this
+	 * wrapper supplies kevent_qos.
+	 *
+	 * Without it a registration call returned whatever else was pending
+	 * and libdispatch discarded it. The manager thread's EVFILT_USER poke
+	 * is EV_CLEAR, so a worker's timer or source registration that
+	 * collected it cleared it for good: the manager slept on, never armed
+	 * the next timer, and every dispatch timer after the first never
+	 * fired (CFRunLoopRunInMode's timeout included).
+	 */
+	if (flags & KEVENT_FLAG_ERROR_EVENTS) {
+		for (i = 0; i < nsubmit; i++)
+			scratch_ch[i].flags |= EV_RECEIPT;
+	}
+
 	int ev_budget = nevents - filled;
 	if (ev_budget > KEVENT_STACK_SLOTS) {
 		scratch_ev = calloc((size_t)ev_budget, sizeof(*scratch_ev));
@@ -1034,6 +1053,14 @@ kevent_qos(int kq, const struct kevent_qos_s *changelist, int nchanges,
 		 */
 		if ((flags & KEVENT_FLAG_ERROR_EVENTS) &&
 		    !(scratch_ev[i].flags & EV_ERROR))
+			continue;
+		/*
+		 * A successful EV_RECEIPT (EV_ERROR with data 0, requested above)
+		 * is not an event: libdispatch ignores it, and for a translated
+		 * Mach port change the branch below would drain the port set on
+		 * a registration call.
+		 */
+		if ((flags & KEVENT_FLAG_ERROR_EVENTS) && scratch_ev[i].data == 0)
 			continue;
 
 		/*
