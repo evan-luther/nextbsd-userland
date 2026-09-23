@@ -2008,16 +2008,17 @@ bool _CFIsSwift(CFTypeID type, CFSwiftRef obj) {
     // Foreign test: a tagged pointer (low bits set) is foreign; test it
     // before any dereference. Otherwise the object is foreign iff its
     // isa is non-NULL, is not the constant-string class, and is not a
-    // registered bridge class (the generic form) or not the class
-    // registered for the given type ID (the typed form). Only the isa word
-    // is read: a foreign object may be a single word long.
+    // registered bridge class. Bridge classes are only ever stamped on
+    // CF-native objects, so the typed form needs no per-type comparison:
+    // a native object stamped with the default class before its type got
+    // a specific class is still native. Only the isa word is read: a
+    // foreign object may be a single word long.
+    (void)type;
     if (((uintptr_t)obj & 7) != 0) return true;
     uintptr_t isa = obj->isa;
     if (isa == 0) return false;
     if (isa == (uintptr_t)&__CFConstantStringClassReference) return false;
-    if (type == _kCFRuntimeNotATypeID) return !__CFBridgeIsClass(isa);
-    if (type >= __CFRuntimeClassTableSize) return true;
-    return isa != _GetCFRuntimeObjcClassAtIndex(type);
+    return !__CFBridgeIsClass(isa);
 #else
     if (type == _kCFRuntimeNotATypeID) {
         return false;

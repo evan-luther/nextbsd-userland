@@ -279,9 +279,13 @@ test_foreign_bridge_2b(void)
     CFTypeRef f = one_word_foreign(&map, page);
     if (!f) return fail("one-word foreign object setup failed");
 
-    /* Per-type classes so the typed foreign test applies. Register
-     * BEFORE creating the shared objects below: new instances get the
-     * registered class as their isa, which is what makes them native. */
+    /* A CFDate created while CFDate has only the default class (from
+     * test_foreign_bridge) is still native after CFDate gets its own
+     * class: bridge classes only ever mark CF-native objects. */
+    CFDateRef early_date = CFDateCreate(NULL, 7.0);
+    if (!early_date) return fail("early CFDateCreate failed");
+
+    /* Per-type classes. */
     _CFRuntimeBridgeTypeToClass(CFDateGetTypeID(), &fake_date_class);
     _CFRuntimeBridgeTypeToClass(CFErrorGetTypeID(), &fake_error_class);
     _CFRuntimeBridgeTypeToClass(CFURLGetTypeID(), &fake_url_class);
@@ -312,6 +316,13 @@ test_foreign_bridge_2b(void)
     __CFSwiftBridge.NSDate.timeIntervalSinceReferenceDate = fake_date_timeIntervalSinceReferenceDate;
     __CFSwiftBridge.NSDate.timeIntervalSinceDate = fake_date_timeIntervalSinceDate;
     __CFSwiftBridge.NSDate.compare = fake_date_compare;
+
+    {
+	int before = hook_total;
+	if (CFDateGetAbsoluteTime(early_date) != 7.0 || hook_total != before)
+	    return fail("CFDate stamped with the default class took the foreign path");
+	CFRelease(early_date);
+    }
 
     __CFSwiftBridge.NSError.userInfo = fake_error_userInfo;
     __CFSwiftBridge.NSError.domain = fake_error_domain;
