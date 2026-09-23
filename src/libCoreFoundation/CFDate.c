@@ -168,11 +168,13 @@ CF_PRIVATE void __CFDateInitialize(void) {
     __CFTSRRate = 1.0e7;
     __CF1_TSRRate = 1.0 / __CFTSRRate;
 #elif TARGET_OS_LINUX || TARGET_OS_BSD || TARGET_OS_WASI
-    struct timespec res;
-    if (clock_getres(CLOCK_MONOTONIC, &res) != 0) {
-        HALT;
-    }
-    __CFTSRRate = res.tv_sec + (1000000000 * res.tv_nsec);
+    // mach_absolute_time() here is CoreFoundation_Prefix.h's shim, which
+    // always returns CLOCK_MONOTONIC in nanoseconds, so a TSR unit is one
+    // nanosecond whatever the clock's resolution. The old rate,
+    // res.tv_sec + 1e9 * res.tv_nsec, only equalled 1e9 when the reported
+    // resolution was 1 ns: FreeBSD on a 24 MHz arm64 generic timer reports
+    // 42 ns, which stretched every run loop timer and timeout 42-fold.
+    __CFTSRRate = 1.0E9;
     __CF1_TSRRate = 1.0 / __CFTSRRate;
 #else
 #error Unable to initialize date

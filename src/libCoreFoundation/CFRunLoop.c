@@ -533,11 +533,15 @@ static __CFPort mk_timer_create(__CFPortSet parent) {
 }
 
 static kern_return_t mk_timer_arm(__CFPort timer, int64_t expire_tsr) {
+    // Both sides are nanoseconds (the TSR is the prefix header's
+    // CLOCK_MONOTONIC shim). Arm in nanoseconds: EVFILT_TIMER's default
+    // unit is milliseconds, which truncated sub-millisecond deadlines to 0
+    // and woke the run loop before its timer was due.
     uint64_t now = mach_absolute_time();
     uint64_t expire_time = __CFTSRToNanoseconds(expire_tsr);
     int64_t duration = 0;
     if (now <= expire_time) {
-        duration = __CFTSRToTimeInterval(expire_time - now) * 1000;
+        duration = (int64_t)(expire_time - now);
     }
 
     int id = __CFPORT_TIMER_UNPACK_ID(timer);
@@ -546,8 +550,8 @@ static kern_return_t mk_timer_arm(__CFPort timer, int64_t expire_tsr) {
         &tev,
         id,
         EVFILT_TIMER,
-        EV_ADD | EV_ENABLE,
-        0,
+        EV_ADD | EV_ENABLE | EV_ONESHOT, // mk_timer semantics: fire once per arm
+        NOTE_NSECONDS,
         duration,
         (void *)timer);
 
@@ -686,15 +690,25 @@ static Boolean __CFRunLoopServiceFileDescriptors(__CFPortSet set, __CFPort port,
 
         awokenPort = port;
     } else {
+        // Wait on the whole port set for the caller's timeout (0 polls,
+        // TIMEOUT_INFINITY blocks). Polling with a zero timeout regardless
+        // turned every run loop wait into a busy loop.
         struct kevent awake;
-        struct timespec timeout = {0, 0};
-
-        int r = kevent(set->kq, NULL, 0, &awake, 1, &timeout);
-
-        if (r == 0) {
-            return false;
+        struct timespec ts, *tsPtr = NULL;
+        if (timeout != TIMEOUT_INFINITY) {
+            ts.tv_sec = timeout / 1000000000UL;
+            ts.tv_nsec = timeout % 1000000000UL;
+            tsPtr = &ts;
         }
 
+        int r;
+        do {
+            r = kevent(set->kq, NULL, 0, &awake, 1, tsPtr);
+        } while (r == -1 && errno == EINTR);
+
+        if (r <= 0) {
+            return false;
+        }
         if (awake.flags == EV_ERROR) {
             return false;
         }
