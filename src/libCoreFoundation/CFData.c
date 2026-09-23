@@ -17,7 +17,7 @@
 
 
 
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 DECLARE_STATIC_CLASS_REF(NSMutableData);
 static const void *_NSMutableData = STATIC_CLASS_REF(NSMutableData);
 static Boolean _CFDataShouldBridgeToSwift(CFTypeID type, CFDataRef data);
@@ -69,7 +69,7 @@ struct __CFData {
     uint8_t *_bytes;	/* compaction: direct access to _bytes is only valid when data is not inline */
 };
 
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 static Boolean _CFDataShouldBridgeToSwift(CFTypeID type, CFDataRef data) {
     return CF_IS_SWIFT(type, data) && data->_base._cfisa != (uintptr_t)_NSMutableData;
 }

@@ -28,6 +28,27 @@
 #define DEPLOYMENT_RUNTIME_SWIFT 0
 #endif
 
+/*
+ * Foreign-runtime bridge (2026-09-23): when CF is built for neither the
+ * Swift runtime nor the Objective-C runtime, compile the bridge
+ * machinery (struct _CFSwiftBridge __CFSwiftBridge, the
+ * CF_SWIFT_FUNCDISPATCHV / CF_IS_SWIFT / CFTYPE_* dispatch macros and
+ * the dispatch sites that use them) so a foreign object runtime can
+ * register itself at run time via _CFRuntimeBridgeTypeToClass /
+ * _CFRuntimeBridgeSetDefaultClass and the __CFSwiftBridge function
+ * table. With nothing registered every foreign test is false and CF
+ * behaves exactly as a standalone build. DEPLOYMENT_RUNTIME_OBJC is
+ * never defined in this tree; treat undefined as 0.
+ */
+#ifndef DEPLOYMENT_RUNTIME_OBJC
+#define DEPLOYMENT_RUNTIME_OBJC 0
+#endif
+#if !DEPLOYMENT_RUNTIME_SWIFT && !DEPLOYMENT_RUNTIME_OBJC
+#define CF_BRIDGE_FOREIGN_RUNTIME 1
+#else
+#define CF_BRIDGE_FOREIGN_RUNTIME 0
+#endif
+
 #ifndef __COREFOUNDATION_PREFIX_H__
 #define __COREFOUNDATION_PREFIX_H__ 1
 

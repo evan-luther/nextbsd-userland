@@ -66,6 +66,15 @@ CF_INLINE CFIndex __CFArrayGetType(CFArrayRef array) {
     return __CFRuntimeGetValue(array, 1, 0);
 }
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// SPI for the foreign runtime's bridged array classes: mutation methods
+// must know whether the CF array they wrap is mutable.
+Boolean _CFArrayIsMutable(CFArrayRef array) {
+    if (NULL == array || _CFIsSwift(_kCFRuntimeIDCFArray, (CFSwiftRef)array)) return false;
+    return __CFArrayGetType(array) != __kCFArrayImmutable;
+}
+#endif
+
 CF_INLINE CFIndex __CFArrayGetSizeOfType(CFIndex t) {
     CFIndex size = 0;
     size += sizeof(struct __CFArray);
@@ -968,7 +977,7 @@ void CFArraySortValues(CFMutableArrayRef array, CFRange range, CFComparatorFunct
         result = CF_OBJC_CALLV((NSMutableArray *)array, isKindOfClass:[NSMutableArray class]);
         immutable = !result;
     } else if (CF_IS_SWIFT(_kCFRuntimeIDCFArray, array)) {
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
         Boolean result = __CFSwiftBridge.NSArray.isSubclassOfNSMutableArray(array);
         immutable = !result;
 #endif

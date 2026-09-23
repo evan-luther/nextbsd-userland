@@ -1854,8 +1854,8 @@ _CFThreadRef _CFRunLoopGet1(CFRunLoopRef rl) {
 CF_EXPORT CFTypeRef _CFRunLoopGet2(CFRunLoopRef rl) {
     CFTypeRef ret = NULL;
     __CFLock(&loopsLock);
-#if DEPLOYMENT_RUNTIME_SWIFT
-    if (rl->_counterpart == NULL) {
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
+    if (rl->_counterpart == NULL && __CFSwiftBridge.NSRunLoop._new != NULL) {
         CFTypeRef ns = __CFSwiftBridge.NSRunLoop._new(rl); // returns retained so we will claim ownership of that return value by just assigning (the release is balanced in the destruction of the CFRunLoop
         rl->_counterpart = ns;
     }

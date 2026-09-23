@@ -128,6 +128,17 @@ struct _NSObjectBridge {
     CFHashCode (*hash)(CFTypeRef object);
     bool (*isEqual)(CFTypeRef object, CFTypeRef other);
     _Nonnull CFTypeRef (*_Nonnull copyWithZone)(_Nonnull CFTypeRef object, _Nullable CFTypeRef zone);
+    // Foreign-runtime additions (CF_BRIDGE_FOREIGN_RUNTIME): CF calls
+    // these for objects whose isa is foreign (see _CFIsSwift). Swift
+    // Foundation leaves them NULL; Swift objects share CF's refcounting.
+    _Nullable CFTypeRef (*_Nullable retain)(_Nonnull CFTypeRef object);
+    void (*_Nullable release)(_Nonnull CFTypeRef object);
+    CFIndex (*_Nullable retainCount)(_Nonnull CFTypeRef object);
+    _Nullable CFTypeRef (*_Nullable autorelease)(_Nonnull CFTypeRef object);
+    _Nullable CFStringRef (*_Nullable copyDescription)(_Nonnull CFTypeRef object); // returns +1
+    // Called for a CF-native object with a non-NULL isa immediately
+    // before CF runs its finalizer on the last release.
+    void (*_Nullable deallocating)(_Nonnull CFTypeRef object);
 };
 
 struct _NSArrayBridge {
@@ -353,6 +364,16 @@ CF_EXPORT struct _CFSwiftBridge __CFSwiftBridge __attribute__((swift_attr("nonis
 CF_EXPORT void *_Nullable _CFSwiftRetain(void *_Nullable t);
 CF_EXPORT void _CFSwiftRelease(void *_Nullable t);
 
+
+// Sets the bridge class for every CF type that has no specific class
+// registered via _CFRuntimeBridgeTypeToClass, including types registered
+// later by _CFRuntimeRegisterClass, and re-stamps the isa of CF's static
+// instances of those types. Specific registrations override the default.
+CF_EXPORT void _CFRuntimeBridgeSetDefaultClass(const void *isa);
+
+// Mutability queries for bridged CF types (foreign-runtime bridge).
+CF_EXPORT Boolean _CFStringIsMutable(CFStringRef str);
+CF_EXPORT Boolean _CFArrayIsMutable(CFArrayRef array);
 CF_EXPORT void _CFRuntimeBridgeTypeToClass(CFTypeID type, const void *isa);
 
 CF_EXPORT CFNumberType _CFNumberGetType2(CFNumberRef number);

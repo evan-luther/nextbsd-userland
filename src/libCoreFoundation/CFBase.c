@@ -399,6 +399,7 @@ const CFAllocatorRef kCFAllocatorSystemDefault = &__kCFAllocatorSystemDefault;
 const CFAllocatorRef kCFAllocatorMalloc = &__kCFAllocatorMalloc;
 const CFAllocatorRef kCFAllocatorMallocZone = &__kCFAllocatorMallocZone;
 const CFAllocatorRef kCFAllocatorNull = &__kCFAllocatorNull;
+
 const CFAllocatorRef kCFAllocatorUseContext = (CFAllocatorRef)0x03ab;
 
 // Even though we no longer support GC, leave in the definitions for exported symbols.
@@ -850,6 +851,19 @@ void _CFRuntimeSetCFMPresent(void *addr) {
 
 
 // void __HALT(void);
+
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// Registers this file's writable static CFRuntimeBase instances so a
+// bridge-class registration can re-stamp their isa. Called lazily under
+// __CFBigRuntimeFunnel by CFRuntime.c.
+void __CFBaseBridgeRegisterStaticInstances(void) {
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFAllocatorSystemDefault._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFAllocatorMalloc._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFAllocatorMallocZone._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFAllocatorNull._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNull._base);
+}
+#endif
 
 /* Keep this assembly at the bottom of the source file! */
 

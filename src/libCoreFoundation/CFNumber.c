@@ -428,6 +428,23 @@ static _CF_CONSTANT_OBJECT_BACKING struct __CFNumber __kCFNumberFloat64One = {
 };
 static const CFNumberRef kCFNumberFloat64One = &__kCFNumberFloat64One;
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// Registers this file's writable static CFRuntimeBase instances so a
+// bridge-class registration can re-stamp their isa. Called lazily under
+// __CFBigRuntimeFunnel by CFRuntime.c.
+void __CFNumberBridgeRegisterStaticInstances(void) {
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFBooleanTrue._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFBooleanFalse._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberNaN._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberNegativeInfinity._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberPositiveInfinity._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberFloat32Zero._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberFloat32One._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberFloat64Zero._base);
+    _CFRuntimeBridgeRegisterStaticInstance(&__kCFNumberFloat64One._base);
+}
+#endif
+
 static const struct {
     uint16_t canonicalType:5;	// canonical fixed-width type
     uint16_t floatBit:1;	// is float

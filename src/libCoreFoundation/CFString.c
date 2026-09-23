@@ -1196,7 +1196,7 @@ CFHashCode CFStringHashNSString(CFStringRef str) {
     UniChar buffer[HashEverythingLimit];
     CFIndex bufLen;		// Number of characters in the buffer for hashing
     CFIndex len = 0;	// Actual length of the string
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
     len = CF_SWIFT_CALLV(str, NSString.length);
     if (len <= HashEverythingLimit) {
         (void)CF_SWIFT_CALLV(str, NSString.getCharacters, CFRangeMake(0, len), buffer);
@@ -1804,6 +1804,15 @@ CFStringRef CFStringCreateCopy(CFAllocatorRef alloc, CFStringRef str) {
     return _CFNonObjCStringCreateCopy(alloc, str);
 }
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// SPI for the foreign runtime's bridged string classes: mutation methods
+// must know whether the CF string they wrap is mutable.
+Boolean _CFStringIsMutable(CFStringRef str) {
+    if (NULL == str || _CFIsSwift(_kCFRuntimeIDCFString, (CFSwiftRef)str)) return false;
+    return __CFStrIsMutable(str);
+}
+#endif
+
 
 
 /*** Constant string stuff... ***/
@@ -2182,7 +2191,7 @@ int _CFStringCheckAndGetCharacters(CFStringRef str, CFRange range, UniChar *buff
 
 
 CFIndex CFStringGetBytes(CFStringRef str, CFRange range, CFStringEncoding encoding, uint8_t lossByte, Boolean isExternalRepresentation, uint8_t * _Nullable buffer, CFIndex maxBufLen, CFIndex *usedBufLen) {
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
     if (CF_IS_SWIFT(_kCFRuntimeIDCFString, str) && __CFSwiftBridge.NSString.__getBytes != NULL) {
         return __CFSwiftBridge.NSString.__getBytes(str, encoding, range, buffer, maxBufLen, usedBufLen);
     }
@@ -5124,7 +5133,7 @@ void __CFStringAppendBytes(CFMutableStringRef str, const char *cStr, CFIndex app
 	    CF_OBJC_FUNCDISPATCHV(_kCFRuntimeIDCFString, void, (NSMutableString *)str, appendCharacters:(const unichar *)cStr length:(NSUInteger)appendedLength);
 	}
     }
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
     else if (CF_IS_SWIFT(_kCFRuntimeIDCFString, str)) {
         if (!appendedIsUnicode && !demoteAppendedUnicode) {
             CF_SWIFT_FUNCDISPATCHV(_kCFRuntimeIDCFString, void, (CFSwiftRef)str, NSMutableString._cfAppendCString,(const char *)cStr, appendedLength);

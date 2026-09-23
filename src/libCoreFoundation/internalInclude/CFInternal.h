@@ -138,6 +138,10 @@ typedef struct os_log_s *os_log_t;
 // We want to eventually note that some objects are immortal to the Swift runtime, but this stopgap lets things work while we work to make an ABI for them.
 #if DEPLOYMENT_RUNTIME_SWIFT
 #define _CF_CONSTANT_OBJECT_BACKING // We don't support this on Swift
+#elif CF_BRIDGE_FOREIGN_RUNTIME
+// A foreign runtime re-stamps the isa of CF's static instances when it
+// registers bridge classes, so they must live in writable memory.
+#define _CF_CONSTANT_OBJECT_BACKING
 #else
 #define _CF_CONSTANT_OBJECT_BACKING const
 #endif
@@ -176,7 +180,7 @@ typedef struct os_log_s *os_log_t;
  * non-Swift mode -- it only brings in declarations, no Swift-specific
  * types.
  */
-#if DEPLOYMENT_RUNTIME_SWIFT || TARGET_OS_BSD || TARGET_OS_LINUX
+#if DEPLOYMENT_RUNTIME_SWIFT || TARGET_OS_BSD || TARGET_OS_LINUX || CF_BRIDGE_FOREIGN_RUNTIME
 #include "ForSwiftFoundationOnly.h"
 #endif
 #if DEPLOYMENT_RUNTIME_SWIFT
@@ -865,7 +869,14 @@ CF_PRIVATE void _CFIterateDirectory(CFStringRef directoryPath, Boolean appendSla
 
 extern void _CFRuntimeSetInstanceTypeIDAndIsa(CFTypeRef cf, CFTypeID newTypeID);
 
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// Registers a writable static CFRuntimeBase instance so that
+// _CFRuntimeBridgeTypeToClass / _CFRuntimeBridgeSetDefaultClass can
+// re-stamp its isa when a bridge class is registered for its type.
+CF_PRIVATE void _CFRuntimeBridgeRegisterStaticInstance(CFRuntimeBase *instance);
+#endif
+
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 #define CF_IS_SWIFT(type, obj) (_CFIsSwift(type, (CFSwiftRef)obj))
 
 #define CF_SWIFT_FUNCDISPATCHV_CHECK(check, type, ret, obj, fn, ...) do { \

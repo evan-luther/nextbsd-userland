@@ -288,12 +288,25 @@ int __CFConstantStringClassReference[24] = {0};
 int __CFConstantStringClassReference[12] = {0};
 #endif
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// Under a foreign runtime the constant-string class is identified by
+// this symbol's resolved address; a foreign runtime may interpose its
+// own definition (e.g. libgnustep-base's NSCFString), which is what CF
+// must see too. Keep the reference a normal dynamic-symbol lookup.
+void *__CFConstantStringClassReferencePtr = (void *)&__CFConstantStringClassReference;
+#else
 void *__CFConstantStringClassReferencePtr = NULL;
+#endif
 #endif
 
 Boolean _CFIsObjC(CFTypeID typeID, void *obj) {
     return CF_IS_OBJC(typeID, obj);
 }
+
+#if CF_BRIDGE_FOREIGN_RUNTIME
+static const void *__CFBridgeDefaultClass = NULL;
+CF_INLINE CFTypeID __CFTypeIDFromInfo(__CFInfoType info);
+#endif
 
 CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls) {
     // NOTE: If you are adding a type to CF itself, please use a constant value (see CFRuntime_Internal.h)
@@ -315,15 +328,87 @@ CFTypeID _CFRuntimeRegisterClass(const CFRuntimeClass * const cls) {
     }
     __CFRuntimeClassTable[__CFRuntimeClassTableCount++] = (CFRuntimeClass *)cls;
     CFTypeID typeID = __CFRuntimeClassTableCount - 1;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // Types registered after a default bridge class get it; a later
+    // _CFRuntimeBridgeTypeToClass overrides it.
+    __CFRuntimeObjCClassTable[typeID] = (uintptr_t)__CFBridgeDefaultClass;
+#endif
     os_unfair_lock_unlock(&__CFBigRuntimeFunnel);
     return typeID;
 }
 
+#if CF_BRIDGE_FOREIGN_RUNTIME
+// Writable static CFRuntimeBase instances (INIT_CFRUNTIME_BASE_WITH_CLASS*
+// objects and friends) registered by each file that defines them, so a
+// bridge-class registration can re-stamp their isa. Registration is lazy:
+// it happens under the funnel lock on the first bridge call, which is
+// always before the foreign runtime can observe the stamped isas.
+#define __CF_BRIDGE_MAX_STATIC_INSTANCES 32
+static CFRuntimeBase *__CFBridgeStaticInstances[__CF_BRIDGE_MAX_STATIC_INSTANCES];
+static CFIndex __CFBridgeStaticInstanceCount = 0;
+static Boolean __CFBridgeStaticsRegistered = false;
+
+void _CFRuntimeBridgeRegisterStaticInstance(CFRuntimeBase *instance) {
+    if (__CFBridgeStaticInstanceCount >= __CF_BRIDGE_MAX_STATIC_INSTANCES) HALT;
+    __CFBridgeStaticInstances[__CFBridgeStaticInstanceCount++] = instance;
+}
+
+extern void __CFBaseBridgeRegisterStaticInstances(void);
+extern void __CFNumberBridgeRegisterStaticInstances(void);
+
+// Call with __CFBigRuntimeFunnel held.
+static void __CFBridgeEnsureStaticsRegistered(void) {
+    if (__CFBridgeStaticsRegistered) return;
+    __CFBridgeStaticsRegistered = true;
+    __CFBaseBridgeRegisterStaticInstances();
+    __CFNumberBridgeRegisterStaticInstances();
+}
+
+// Call with __CFBigRuntimeFunnel held.
+static void __CFBridgeRestampStaticInstances(CFTypeID typeID, const void *cls) {
+    for (CFIndex i = 0; i < __CFBridgeStaticInstanceCount; i++) {
+        CFRuntimeBase *instance = __CFBridgeStaticInstances[i];
+        if (__CFTypeIDFromInfo(instance->_cfinfoa) == typeID) {
+            instance->_cfisa = (uintptr_t)cls;
+        }
+    }
+}
+#endif
+
 void _CFRuntimeBridgeTypeToClass(CFTypeID cf_typeID, const void *cls_ref) {
     os_unfair_lock_lock(&__CFBigRuntimeFunnel);
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    __CFBridgeEnsureStaticsRegistered();
+#endif
     __CFRuntimeObjCClassTable[cf_typeID] = (uintptr_t)cls_ref;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    __CFBridgeRestampStaticInstances(cf_typeID, cls_ref);
+#endif
     os_unfair_lock_unlock(&__CFBigRuntimeFunnel);
 }
+
+#if CF_BRIDGE_FOREIGN_RUNTIME
+void _CFRuntimeBridgeSetDefaultClass(const void *cls) {
+    os_unfair_lock_lock(&__CFBigRuntimeFunnel);
+    __CFBridgeEnsureStaticsRegistered();
+    const void *oldDefault = __CFBridgeDefaultClass;
+    __CFBridgeDefaultClass = cls;
+    for (CFTypeID typeID = 0; typeID < __CFRuntimeClassTableSize; typeID++) {
+        uintptr_t current = __CFRuntimeObjCClassTable[typeID];
+        if (current == 0 || current == (uintptr_t)oldDefault) {
+            __CFRuntimeObjCClassTable[typeID] = (uintptr_t)cls;
+        }
+    }
+    for (CFIndex i = 0; i < __CFBridgeStaticInstanceCount; i++) {
+        CFRuntimeBase *instance = __CFBridgeStaticInstances[i];
+        uintptr_t current = instance->_cfisa;
+        if (current == 0 || current == (uintptr_t)oldDefault) {
+            instance->_cfisa = (uintptr_t)cls;
+        }
+    }
+    os_unfair_lock_unlock(&__CFBigRuntimeFunnel);
+}
+#endif
 
 const CFRuntimeClass * _CFRuntimeGetClassWithTypeID(CFTypeID typeID) {
     return __CFRuntimeClassTable[typeID]; // hopelessly unthreadsafe
@@ -590,7 +675,11 @@ void _CFRuntimeInitStaticInstance(void *ptr, CFTypeID typeID) {
         memory->_cfinfoa = (uint32_t)(typeIDMasked | usesDefaultAllocatorMasked);
     }
 #endif
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    memory->_cfisa = __CFISAForTypeID(typeID);
+#else
     memory->_cfisa = 0;
+#endif
     if (NULL != cfClass->init) {
        (cfClass->init)(memory);
     }
@@ -619,7 +708,7 @@ void _CFRuntimeSetInstanceTypeID(CFTypeRef cf, CFTypeID newTypeID) {
 
 CF_PRIVATE void _CFRuntimeSetInstanceTypeIDAndIsa(CFTypeRef cf, CFTypeID newTypeID) {
     _CFRuntimeSetInstanceTypeID(cf, newTypeID);
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
     if (_CFTypeGetClass(cf) != __CFISAForTypeID(newTypeID)) {
         ((CFSwiftRef)cf)->isa = (uintptr_t)__CFISAForTypeID(newTypeID);
     }
@@ -690,7 +779,7 @@ CFTypeID CFTypeGetTypeID(void) {
 }
 
 CF_PRIVATE void __CFGenericValidateType_(CFTypeRef cf, CFTypeID type, const char *func) {
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
     if (cf && CF_IS_SWIFT(type, (CFSwiftRef)cf)) return;
 #endif
     if (cf && CF_IS_OBJC(type, cf)) return;
@@ -701,9 +790,13 @@ CF_PRIVATE void __CFGenericValidateType_(CFTypeRef cf, CFTypeID type, const char
 #define __CFGenericAssertIsCF(cf) \
     CFAssert2(cf != NULL && (NULL != __CFRuntimeClassTable[__CFGenericTypeID_inline(cf)]) && (_kCFRuntimeIDNotAType != __CFGenericTypeID_inline(cf)) && (_kCFRuntimeIDCFType != __CFGenericTypeID_inline(cf)), __kCFLogAssertion, "%s(): pointer %p is not a CF object", __PRETTY_FUNCTION__, cf);
 
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 
 CF_INLINE Boolean CFTYPE_IS_SWIFT(const void *obj) {
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // Tagged pointers are foreign; test before dereferencing the info word.
+    if (((uintptr_t)obj & 7) != 0) return true;
+#endif
     CFTypeID typeID = __CFGenericTypeID_inline(obj);
     return CF_IS_SWIFT(typeID, obj);
 }
@@ -785,12 +878,22 @@ CFTypeRef _CFNonObjCRetain(CFTypeRef cf) {
 
 CFTypeRef CFRetain(CFTypeRef cf) {
     if (NULL == cf) { CRSetCrashLogMessage("*** CFRetain() called with NULL ***"); HALT; }
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) {
+        return __CFSwiftBridge.NSObject.retain(cf);
+    }
+#endif
     __CFGenericAssertIsCF(cf);
     return _CFRetain(cf, false);
 }
 
 CFTypeRef CFAutorelease(CFTypeRef __attribute__((cf_consumed)) cf) {
-    if (NULL == cf) { CRSetCrashLogMessage("*** CFAutorelease() called with NULL ***"); HALT; }
+    if (NULL == cf) return NULL;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (__CFSwiftBridge.NSObject.autorelease) {
+        return __CFSwiftBridge.NSObject.autorelease(cf);
+    }
+#endif
     return cf;
 }
 
@@ -803,6 +906,12 @@ void _CFNonObjCRelease(CFTypeRef cf) {
 
 void CFRelease(CFTypeRef cf) {
     if (NULL == cf) { CRSetCrashLogMessage("*** CFRelease() called with NULL ***"); HALT; }
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) {
+        __CFSwiftBridge.NSObject.release(cf);
+        return;
+    }
+#endif
     __CFGenericAssertIsCF(cf);
     _CFRelease(cf);
 }
@@ -887,6 +996,11 @@ CF_PRIVATE void __CFRuntimeSetRC(CFTypeRef cf, uint32_t rc) {
 
 CFIndex CFGetRetainCount(CFTypeRef cf) {
     if (NULL == cf) { CRSetCrashLogMessage("*** CFGetRetainCount() called with NULL ***"); HALT; }
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) {
+        return __CFSwiftBridge.NSObject.retainCount(cf);
+    }
+#endif
     __CFInfoType info = atomic_load(&(((CFRuntimeBase *)cf)->_cfinfoa));
     if (info & RC_CUSTOM_RC_BIT) { // custom ref counting for object
         CFTypeID typeID = __CFTypeIDFromInfo(info);
@@ -980,6 +1094,11 @@ CFHashCode CFHash(CFTypeRef cf) {
 CFStringRef CFCopyDescription(CFTypeRef cf) {
     if (NULL == cf) return NULL;
     // CFTYPE_OBJC_FUNCDISPATCH0(CFStringRef, cf, _copyDescription);  // XXX returns 0 refcounted item under GC
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) {
+        return __CFSwiftBridge.NSObject.copyDescription(cf);
+    }
+#endif
     __CFGenericAssertIsCF(cf);
     if (NULL != __CFRuntimeClassTable[__CFGenericTypeID_inline(cf)]->copyDebugDesc) {
 	CFStringRef result = __CFRuntimeClassTable[__CFGenericTypeID_inline(cf)]->copyDebugDesc(cf);
@@ -991,6 +1110,12 @@ CFStringRef CFCopyDescription(CFTypeRef cf) {
 // Definition: if type produces a formatting description, return that string, otherwise NULL
 CF_PRIVATE CFStringRef __CFCopyFormattingDescription(CFTypeRef cf, CFDictionaryRef formatOptions) {
     if (NULL == cf) return NULL;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // Foreign objects have no CF formatting description; the %@ path
+    // falls through to CFCopyDescription, which dispatches to the
+    // foreign runtime's copyDescription hook.
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) return NULL;
+#endif
     __CFGenericAssertIsCF(cf);
     if (NULL != __CFRuntimeClassTable[__CFGenericTypeID_inline(cf)]->copyFormattingDesc) {
 	return __CFRuntimeClassTable[__CFGenericTypeID_inline(cf)]->copyFormattingDesc(cf, formatOptions);
@@ -1002,6 +1127,10 @@ extern CFAllocatorRef __CFAllocatorGetAllocator(CFTypeRef);
 
 CFAllocatorRef CFGetAllocator(CFTypeRef cf) {
     if (NULL == cf) return kCFAllocatorSystemDefault;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // Foreign objects were not allocated by a CFAllocator.
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) return kCFAllocatorSystemDefault;
+#endif
     if (_kCFRuntimeIDCFAllocator == __CFGenericTypeID_inline(cf)) {
 	return __CFAllocatorGetAllocator(cf);
     }
@@ -1517,6 +1646,11 @@ CFTypeRef _CFTryRetain(CFTypeRef cf) {
 #if OBJC_HAVE_TAGGED_POINTERS
     if (_objc_isTaggedPointer(cf)) return cf; // success
 #endif
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) {
+        return __CFSwiftBridge.NSObject.retain ? __CFSwiftBridge.NSObject.retain(cf) : NULL;
+    }
+#endif
     return _CFRetain(cf, true);
 }
 
@@ -1524,6 +1658,10 @@ Boolean _CFIsDeallocating(CFTypeRef cf) {
     if (NULL == cf) return false;
 #if OBJC_HAVE_TAGGED_POINTERS
     if (_objc_isTaggedPointer(cf)) return false;
+#endif
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // CF does not track foreign objects' lifetimes.
+    if (_CFIsSwift(_kCFRuntimeNotATypeID, (CFSwiftRef)cf)) return false;
 #endif
     __CFInfoType info = atomic_load(&(((CFRuntimeBase *)cf)->_cfinfoa));
     if (info & RC_CUSTOM_RC_BIT) {
@@ -1597,6 +1735,14 @@ static void _CFRelease(CFTypeRef CF_RELEASES_ARGUMENT cf) {
                     goto again;
                 }
                 void (*func)(CFTypeRef) = __CFRuntimeClassTable[typeID]->finalize;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+                // A bridged CF object (isa != 0) may have foreign weak
+                // references; let the foreign runtime clear them before
+                // the finalizer runs.
+                if (__CFSwiftBridge.NSObject.deallocating && ((CFRuntimeBase *)cf)->_cfisa != 0) {
+                    __CFSwiftBridge.NSObject.deallocating(cf);
+                }
+#endif
                 if (NULL != func) {
                     func(cf);
                 }
@@ -1670,6 +1816,11 @@ static void _CFRelease(CFTypeRef CF_RELEASES_ARGUMENT cf) {
                 goto really_free;
             } else {
                 void (*func)(CFTypeRef) = __CFRuntimeClassTable[typeID]->finalize;
+#if CF_BRIDGE_FOREIGN_RUNTIME
+                if (__CFSwiftBridge.NSObject.deallocating && ((CFRuntimeBase *)cf)->_cfisa != 0) {
+                    __CFSwiftBridge.NSObject.deallocating(cf);
+                }
+#endif
                 if (NULL != func) {
                     func(cf);
                 }
@@ -1745,9 +1896,11 @@ static void _CFRelease(CFTypeRef CF_RELEASES_ARGUMENT cf) {
 }
 
 
-#if DEPLOYMENT_RUNTIME_SWIFT
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 struct _CFSwiftBridge __CFSwiftBridge = { { NULL } };
+#endif
 
+#if DEPLOYMENT_RUNTIME_SWIFT
 struct _NSCFXMLBridgeStrong __NSCFXMLBridgeStrong = {
   CFArrayGetCount,
   CFArrayGetValueAtIndex,
@@ -1805,7 +1958,9 @@ struct _NSCFXMLBridgeUntyped __NSCFXMLBridgeUntyped = {
   &kCFErrorLocalizedDescriptionKey,
 #pragma GCC diagnostic pop
 };
+#endif
 
+#if DEPLOYMENT_RUNTIME_SWIFT || CF_BRIDGE_FOREIGN_RUNTIME
 // Call out to the CF-level finalizer, because the object is going to go away.
 CF_CROSS_PLATFORM_EXPORT void _CFDeinit(CFTypeRef cf) {
     __CFInfoType info = atomic_load(&(((CFRuntimeBase *)cf)->_cfinfoa));
@@ -1817,11 +1972,28 @@ CF_CROSS_PLATFORM_EXPORT void _CFDeinit(CFTypeRef cf) {
 }
 
 bool _CFIsSwift(CFTypeID type, CFSwiftRef obj) {
+#if CF_BRIDGE_FOREIGN_RUNTIME
+    // Foreign test: a tagged pointer (low bits set) is foreign; test it
+    // before any dereference. Otherwise the object is foreign iff its
+    // isa is non-NULL, is not the constant-string class, and is not the
+    // class registered for the type ID in its info word (or the given
+    // type ID for the typed form).
+    if (((uintptr_t)obj & 7) != 0) return true;
+    uintptr_t isa = obj->isa;
+    if (isa == 0) return false;
+    if (isa == (uintptr_t)&__CFConstantStringClassReference) return false;
+    if (type == _kCFRuntimeNotATypeID) {
+        type = __CFTypeIDFromInfo(atomic_load(&(((CFRuntimeBase *)obj)->_cfinfoa)));
+    }
+    if (type >= __CFRuntimeClassTableSize) return true;
+    return isa != _GetCFRuntimeObjcClassAtIndex(type);
+#else
     if (type == _kCFRuntimeNotATypeID) {
         return false;
     }
     if (obj->isa == (uintptr_t)__CFConstantStringClassReferencePtr) return false;
     return obj->isa != __CFRuntimeObjCClassTable[type];
+#endif
 }
 
 const char *_NSPrintForDebugger(void *cf) {
@@ -1852,7 +2024,9 @@ const char *_NSPrintForDebugger(void *cf) {
 CFHashCode __CFHashDouble(double d) {
     return _CFHashDouble(d);
 }
+#endif
 
+#if DEPLOYMENT_RUNTIME_SWIFT
 void * _Nullable _CFSwiftRetain(void *_Nullable t) {
     if (t != NULL) {
         swift_retain((void *)t);
