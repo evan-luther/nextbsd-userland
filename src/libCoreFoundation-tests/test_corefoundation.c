@@ -912,8 +912,9 @@ test_foreign_bridge(void)
 
 /* ---- CFFileDescriptor -------------------------------------------------
  * Pipe + version-1 source: read fires once per enable, write fires when
- * the pipe has room, closeOnInvalidate closes the fd, mode isolation and
- * common-mode fan-out.
+ * the pipe has room, closeOnInvalidate closes the fd, mode isolation,
+ * common-mode fan-out, and no callback for data consumed before the
+ * run loop got to it.
  */
 
 static int fd_read_calls, fd_write_calls;
@@ -1077,6 +1078,35 @@ test_file_descriptor(void)
 	if (fd_read_calls != before + 2)
 		return fail("common-mode source did not fire in mode C");
 	CFRunLoopRemoveSource(rl, src, kCFRunLoopCommonModes);
+	CFRelease(src);
+	CFFileDescriptorInvalidate(f);
+	CFRelease(f);
+	close(p[0]);
+	close(p[1]);
+
+	/* Stale event: data that arrives while the callback is enabled
+	 * and is consumed before the run loop services the descriptor
+	 * must not fire the callback (a client re-enables before reading
+	 * so a nested run loop can service the descriptor). */
+	if (pipe(p) != 0)
+		return fail("pipe");
+	fcntl(p[0], F_SETFL, O_NONBLOCK);
+	f = CFFileDescriptorCreate(NULL, p[0], false, fd_callback, NULL);
+	src = CFFileDescriptorCreateRunLoopSource(NULL, f, 0);
+	CFRunLoopAddSource(rl, src, kCFRunLoopDefaultMode);
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	write(p[1], "x", 1);
+	while (read(p[0], buf, sizeof(buf)) > 0)
+		;
+	before = fd_read_calls;
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.2, false);
+	if (fd_read_calls != before)
+		return fail("read callback fired for data already consumed");
+	write(p[1], "y", 1);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != before + 1)
+		return fail("read callback did not fire after a stale event");
+	CFRunLoopRemoveSource(rl, src, kCFRunLoopDefaultMode);
 	CFRelease(src);
 	CFFileDescriptorInvalidate(f);
 	CFRelease(f);

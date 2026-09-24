@@ -30,15 +30,22 @@
 #endif
 
 /* Each CFFileDescriptor owns a kernel queue holding only its watched
- * descriptor with the enabled filters, one-shot. The kernel queue is
- * itself readable when an event is pending, so it is the version-1
- * run-loop source's port: on BSD CF ports are packed pipes
- * (__CFPORT_PACK(rfd, wfd), see CFRunLoop.c) and the run loop watches
- * rfd for read readiness — the kqueue fd serves as rfd and the packed
- * wfd is never used for a v1 source; on Linux the port is the fd
+ * descriptor with the enabled filters, disabled after each delivery.
+ * The kernel queue is itself readable when an event is pending, so it
+ * is the version-1 run-loop source's port: on BSD CF ports are packed
+ * pipes (__CFPORT_PACK(rfd, wfd), see CFRunLoop.c) and the run loop
+ * watches rfd for read readiness — the kqueue fd serves as rfd and the
+ * packed wfd is never used for a v1 source; on Linux the port is the fd
  * itself (epoll inside epoll). The source's perform drains the kernel
- * queue, disables the callback types that fired, and calls the
- * callout. */
+ * queue without blocking, disables the callback types that fired, and
+ * calls the callout.
+ *
+ * A callback reports the descriptor's state when the perform runs, not
+ * when the event was queued: a client may re-enable before consuming
+ * the data (to service the descriptor from a nested run loop), and the
+ * event queued then must not fire once the data is gone. epoll
+ * re-polls each item when harvesting; kqueue re-checks the filter only
+ * for events that are not EV_ONESHOT, so BSD uses EV_DISPATCH. */
 
 struct __CFFileDescriptor {
     CFRuntimeBase _base;
@@ -86,12 +93,12 @@ static void __CFFileDescriptorUpdateKernelQueue(CFFileDescriptorRef f) {
     struct kevent changes[2], receipts[2];
     int n = 0;
     if (f->_enabled & kCFFileDescriptorReadCallBack) {
-	EV_SET(&changes[n++], f->_fd, EVFILT_READ, EV_ADD | EV_ONESHOT | EV_RECEIPT, 0, 0, NULL);
+	EV_SET(&changes[n++], f->_fd, EVFILT_READ, EV_ADD | EV_DISPATCH | EV_RECEIPT, 0, 0, NULL);
     } else {
 	EV_SET(&changes[n++], f->_fd, EVFILT_READ, EV_DELETE | EV_RECEIPT, 0, 0, NULL);
     }
     if (f->_enabled & kCFFileDescriptorWriteCallBack) {
-	EV_SET(&changes[n++], f->_fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT | EV_RECEIPT, 0, 0, NULL);
+	EV_SET(&changes[n++], f->_fd, EVFILT_WRITE, EV_ADD | EV_DISPATCH | EV_RECEIPT, 0, 0, NULL);
     } else {
 	EV_SET(&changes[n++], f->_fd, EVFILT_WRITE, EV_DELETE | EV_RECEIPT, 0, 0, NULL);
     }
@@ -169,7 +176,7 @@ static void __CFFileDescriptorPerform(void *info) {
     struct kevent events[8];
     int n;
     do {
-	n = kevent(kqfd, NULL, 0, events, 8, NULL);
+	n = kevent(kqfd, NULL, 0, events, 8, &(struct timespec){0, 0});
     } while (n < 0 && errno == EINTR);
     for (int i = 0; i < n; i++) {
 	if (events[i].filter == EVFILT_READ) fired |= kCFFileDescriptorReadCallBack;
