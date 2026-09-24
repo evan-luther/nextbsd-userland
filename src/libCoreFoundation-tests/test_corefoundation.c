@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <dispatch/dispatch.h>
 
@@ -1285,6 +1286,66 @@ test_dispatch_main_queue(void)
 	return 0;
 }
 
+/* ---- CFBundle ----------------------------------------------------------
+ * A GNUstep bundle (executable at the root, Resources/Info-gnustep.plist
+ * in OpenStep format) is read as a bundle, and Info-gnustep.plist takes
+ * precedence over Info.plist on Linux and BSD.
+ */
+
+static int
+write_file(const char *path, const char *text)
+{
+	FILE *f = fopen(path, "w");
+	if (f == NULL)
+		return -1;
+	fputs(text, f);
+	return fclose(f);
+}
+
+static int
+test_gnustep_bundle(void)
+{
+	char root[] = "/tmp/cfbundle-test.XXXXXX";
+	char path[256];
+	if (mkdtemp(root) == NULL)
+		return fail("mkdtemp");
+	snprintf(path, sizeof(path), "%s/Tool.app", root);
+	mkdir(path, 0755);
+	snprintf(path, sizeof(path), "%s/Tool.app/Resources", root);
+	mkdir(path, 0755);
+	snprintf(path, sizeof(path), "%s/Tool.app/Tool", root);
+	write_file(path, "");
+	snprintf(path, sizeof(path), "%s/Tool.app/Resources/Info-gnustep.plist", root);
+	write_file(path, "{ NSExecutable = Tool; CFBundleIdentifier = \"local.test.gnustep\"; }\n");
+	snprintf(path, sizeof(path), "%s/Tool.app/Resources/Info.plist", root);
+	write_file(path, "{ CFBundleIdentifier = \"local.test.plain\"; }\n");
+
+	snprintf(path, sizeof(path), "%s/Tool.app", root);
+	CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL,
+	    (const UInt8 *)path, strlen(path), true);
+	CFBundleRef bundle = CFBundleCreate(NULL, url);
+	CFRelease(url);
+	if (bundle == NULL)
+		return fail("CFBundleCreate on a GNUstep bundle returned NULL");
+	CFStringRef ident = CFBundleGetIdentifier(bundle);
+	if (ident == NULL || !CFEqual(ident, CFSTR("local.test.gnustep")))
+		return fail("Info-gnustep.plist not preferred over Info.plist");
+	CFURLRef exe = CFBundleCopyExecutableURL(bundle);
+	if (exe == NULL)
+		return fail("executable named by NSExecutable not found");
+	CFStringRef exeName = CFURLCopyLastPathComponent(exe);
+	if (!CFEqual(exeName, CFSTR("Tool")))
+		return fail("wrong executable URL");
+	CFRelease(exeName);
+	CFRelease(exe);
+	CFRelease(bundle);
+
+	char cmd[300];
+	snprintf(cmd, sizeof(cmd), "rm -rf %s", root);
+	system(cmd);
+	return 0;
+}
+
 
 
 int
@@ -1430,6 +1491,8 @@ main(void)
 	if (test_dispatch_main_queue() != 0)
 		return 1;
 	if (test_source1_port_ownership() != 0)
+		return 1;
+	if (test_gnustep_bundle() != 0)
 		return 1;
 
 	printf("COREFOUNDATION-OK: CFDictionary + XML/binary plist round-trip and run loop timing succeeded\n");

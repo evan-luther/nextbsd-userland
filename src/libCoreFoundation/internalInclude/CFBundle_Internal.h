@@ -319,6 +319,15 @@ extern void _CFPlugInWillUnload(CFPlugInRef plugIn);
 #define _CFBundlePlatformInfoURLFromBase3 CFSTR("Info-iphoneos.plist")
 #define _CFBundleWrappedPlatformInfoURLFromBase2 CFSTR("WrappedBundle/Contents/Info-iphoneos.plist")
 #define _CFBundleWrappedPlatformInfoURLFromBase3 CFSTR("WrappedBundle/Info-iphoneos.plist")
+#elif TARGET_OS_LINUX || TARGET_OS_BSD
+// GNUstep bundles (the Objective-C bundles on these systems) name their
+// Info plist Info-gnustep.plist; it takes precedence over Info.plist.
+#define _CFBundlePlatformInfoURLFromBase0 CFSTR("Resources/Info-gnustep.plist")
+#define _CFBundlePlatformInfoURLFromBase1 CFSTR("Support%20Files/Info-gnustep.plist")
+#define _CFBundlePlatformInfoURLFromBase2 CFSTR("Contents/Info-gnustep.plist")
+#define _CFBundlePlatformInfoURLFromBase3 CFSTR("Info-gnustep.plist")
+#define _CFBundleWrappedPlatformInfoURLFromBase2 CFSTR("WrappedBundle/Contents/Info-gnustep.plist")
+#define _CFBundleWrappedPlatformInfoURLFromBase3 CFSTR("WrappedBundle/Info-gnustep.plist")
 #else
 // No platform-specific variants in these cases
 #define _CFBundlePlatformInfoURLFromBase0 _CFBundleInfoURLFromBase0
@@ -335,6 +344,8 @@ extern void _CFPlugInWillUnload(CFPlugInRef plugIn);
 #define _CFBundlePlatformInfoPlistName CFSTR("Info-macos.plist")
 #elif TARGET_OS_IPHONE
 #define _CFBundlePlatformInfoPlistName CFSTR("Info-iphoneos.plist")
+#elif TARGET_OS_LINUX || TARGET_OS_BSD
+#define _CFBundlePlatformInfoPlistName CFSTR("Info-gnustep.plist")
 #else
 // No platform-specific Info.plist for these
 #define _CFBundlePlatformInfoPlistName _CFBundleInfoPlistName
