@@ -36,6 +36,13 @@ CF_INLINE Boolean __CFAttributedStringIsMutable(CFAttributedStringRef attrStr) {
     return !__CFRuntimeGetFlag(attrStr, 0);
 }
 
+// Bridged Foundation classes must know whether the CF attributed string they
+// wrap is mutable.
+Boolean _CFAttributedStringIsMutable(CFAttributedStringRef attrStr) {
+    if (NULL == attrStr || _CFIsSwift(_kCFRuntimeIDCFAttributedString, (CFSwiftRef)attrStr)) return false;
+    return __CFAttributedStringIsMutable(attrStr);
+}
+
 CF_INLINE void __CFAttributedStringSetMutable(CFAttributedStringRef attrStr, Boolean flag) {
     // The first bit is 'immutable', so flip the sense
     __CFRuntimeSetFlag(attrStr, 0, !flag);

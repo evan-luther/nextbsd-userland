@@ -29,6 +29,7 @@
 #include "CFURLPriv.h"
 #include "CFURLComponents.h"
 #include "CFRunArray.h"
+#include "CFAttributedString.h"
 #include "CFDateComponents.h"
 
 #if TARGET_OS_WIN32
@@ -507,6 +508,7 @@ CF_EXPORT Boolean _CFDataIsMutable(CFDataRef data);
 CF_EXPORT Boolean _CFCharacterSetIsMutable(CFCharacterSetRef cset);
 CF_EXPORT Boolean _CFDictionaryIsMutable(CFDictionaryRef hc);
 CF_EXPORT Boolean _CFSetIsMutable(CFSetRef hc);
+CF_EXPORT Boolean _CFAttributedStringIsMutable(CFAttributedStringRef attrStr);
 // Fast enumeration over CF-native dictionaries and sets; the state has the
 // layout of Objective-C's NSFastEnumerationState.
 struct __objcFastEnumerationStateEquivalent;
