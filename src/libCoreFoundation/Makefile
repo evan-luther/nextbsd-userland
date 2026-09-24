@@ -88,6 +88,7 @@ SRCS=		CFApplicationPreferences.c \
 		CFDateIntervalFormatter.c \
 		CFDictionary.c \
 		CFError.c \
+		CFFileDescriptor.c \
 		CFFileUtilities.c \
 		CFICUConverters.c \
 		CFKnownLocations.c \
@@ -237,6 +238,7 @@ INCS=		include/CFArray.h \
 		include/CFDictionary.h \
 		include/CFError_Private.h \
 		include/CFError.h \
+		include/CFFileDescriptor.h \
 		include/CFKnownLocations.h \
 		include/CFListFormatter.h \
 		include/CFLocale_Private.h \

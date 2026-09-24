@@ -23,8 +23,12 @@
 #include <CoreFoundation/CFNumber_Private.h>
 
 #include <stdint.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <dispatch/dispatch.h>
 
 static int
 fail(const char *msg)
@@ -906,6 +910,351 @@ test_foreign_bridge(void)
 	return 0;
 }
 
+/* ---- CFFileDescriptor -------------------------------------------------
+ * Pipe + version-1 source: read fires once per enable, write fires when
+ * the pipe has room, closeOnInvalidate closes the fd, mode isolation and
+ * common-mode fan-out.
+ */
+
+static int fd_read_calls, fd_write_calls;
+
+static void
+fd_callback(CFFileDescriptorRef f, CFOptionFlags types, void *info)
+{
+	(void)f; (void)info;
+	if (types & kCFFileDescriptorReadCallBack) fd_read_calls++;
+	if (types & kCFFileDescriptorWriteCallBack) fd_write_calls++;
+}
+
+static int
+test_file_descriptor(void)
+{
+	CFRunLoopRef rl = CFRunLoopGetCurrent();
+	int p[2];
+	char buf[512];
+
+	if (pipe(p) != 0)
+		return fail("pipe");
+
+	/* Read side: one-shot semantics. */
+	CFFileDescriptorRef f = CFFileDescriptorCreate(NULL, p[0], false,
+	    fd_callback, NULL);
+	if (f == NULL)
+		return fail("CFFileDescriptorCreate returned NULL");
+	if (CFFileDescriptorGetNativeDescriptor(f) != p[0])
+		return fail("CFFileDescriptorGetNativeDescriptor");
+	CFRunLoopSourceRef src = CFFileDescriptorCreateRunLoopSource(NULL,
+	    f, 0);
+	if (src == NULL)
+		return fail("CFFileDescriptorCreateRunLoopSource returned NULL");
+	CFRunLoopAddSource(rl, src, kCFRunLoopDefaultMode);
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+
+	/* Nothing to read: must not fire. */
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+	if (fd_read_calls != 0)
+		return fail("read callback fired with no data");
+
+	write(p[1], "x", 1);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != 1)
+		return fail("read callback did not fire once");
+
+	/* One-shot: data still unread, must not fire again until
+	 * re-enabled. */
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+	if (fd_read_calls != 1)
+		return fail("read callback fired again without re-enable");
+
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != 2)
+		return fail("read callback did not fire after re-enable");
+
+	/* Write side: fires while the pipe has room. */
+	CFFileDescriptorRef wf = CFFileDescriptorCreate(NULL, p[1], false,
+	    fd_callback, NULL);
+	CFRunLoopSourceRef wsrc = CFFileDescriptorCreateRunLoopSource(NULL,
+	    wf, 0);
+	CFRunLoopAddSource(rl, wsrc, kCFRunLoopDefaultMode);
+	CFFileDescriptorEnableCallBacks(wf, kCFFileDescriptorWriteCallBack);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_write_calls != 1)
+		return fail("write callback did not fire on writable pipe");
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+	if (fd_write_calls != 1)
+		return fail("write callback fired again without re-enable");
+
+	/* Fill the pipe, re-enable: must not fire until drained. */
+	fcntl(p[0], F_SETFL, O_NONBLOCK);
+	fcntl(p[1], F_SETFL, O_NONBLOCK);
+	memset(buf, 'w', sizeof(buf));
+	while (write(p[1], buf, sizeof(buf)) > 0)
+		;
+	CFFileDescriptorEnableCallBacks(wf, kCFFileDescriptorWriteCallBack);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+	if (fd_write_calls != 1)
+		return fail("write callback fired on a full pipe");
+	while (read(p[0], buf, sizeof(buf)) > 0)
+		;
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_write_calls != 2)
+		return fail("write callback did not fire after drain");
+
+	CFRunLoopRemoveSource(rl, src, kCFRunLoopDefaultMode);
+	CFRunLoopRemoveSource(rl, wsrc, kCFRunLoopDefaultMode);
+	CFRelease(src);
+	CFRelease(wsrc);
+	CFFileDescriptorInvalidate(f);
+	CFFileDescriptorInvalidate(wf);
+	CFRelease(f);
+	CFRelease(wf);
+	close(p[0]);
+	close(p[1]);
+
+	/* closeOnInvalidate closes the descriptor. */
+	if (pipe(p) != 0)
+		return fail("pipe");
+	f = CFFileDescriptorCreate(NULL, p[0], true, fd_callback, NULL);
+	CFFileDescriptorInvalidate(f);
+	if (CFFileDescriptorIsValid(f))
+		return fail("descriptor still valid after invalidate");
+	if (fcntl(p[0], F_GETFD) != -1 || errno != EBADF)
+		return fail("closeOnInvalidate did not close the fd");
+	CFRelease(f);
+	close(p[1]);
+
+	/* Mode isolation: a source only in mode A must not fire while
+	 * mode B runs (a timer keeps mode B occupied). */
+	CFStringRef modeA = CFSTR("TestModeA");
+	CFStringRef modeB = CFSTR("TestModeB");
+	if (pipe(p) != 0)
+		return fail("pipe");
+	f = CFFileDescriptorCreate(NULL, p[0], false, fd_callback, NULL);
+	src = CFFileDescriptorCreateRunLoopSource(NULL, f, 0);
+	CFRunLoopAddSource(rl, src, modeA);
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	write(p[1], "x", 1);
+	int before = fd_read_calls;
+	double bfired = 0;
+	CFRunLoopTimerContext tctx = { 0, &bfired, NULL, NULL, NULL };
+	CFRunLoopTimerRef bt = CFRunLoopTimerCreate(NULL,
+	    CFAbsoluteTimeGetCurrent() + 0.05, 0, 0, 0, timer_fired, &tctx);
+	CFRunLoopAddTimer(rl, bt, modeB);
+	CFRunLoopRunInMode(modeB, 1.0, true);
+	CFRunLoopTimerInvalidate(bt);
+	CFRelease(bt);
+	if (fd_read_calls != before)
+		return fail("mode-A source fired while running mode B");
+	CFRunLoopRunInMode(modeA, 1.0, true);
+	if (fd_read_calls != before + 1)
+		return fail("mode-A source did not fire in mode A");
+	CFRunLoopRemoveSource(rl, src, modeA);
+	CFRelease(src);
+	CFFileDescriptorInvalidate(f);
+	CFRelease(f);
+	close(p[0]);
+	close(p[1]);
+
+	/* Common modes: fires in the default mode and in another mode
+	 * added to the common set. */
+	CFStringRef modeC = CFSTR("TestModeC");
+	CFRunLoopAddCommonMode(rl, modeC);
+	if (pipe(p) != 0)
+		return fail("pipe");
+	f = CFFileDescriptorCreate(NULL, p[0], false, fd_callback, NULL);
+	src = CFFileDescriptorCreateRunLoopSource(NULL, f, 0);
+	CFRunLoopAddSource(rl, src, kCFRunLoopCommonModes);
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	write(p[1], "x", 1);
+	before = fd_read_calls;
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != before + 1)
+		return fail("common-mode source did not fire in default mode");
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	write(p[1], "x", 1);
+	CFRunLoopRunInMode(modeC, 1.0, true);
+	if (fd_read_calls != before + 2)
+		return fail("common-mode source did not fire in mode C");
+	CFRunLoopRemoveSource(rl, src, kCFRunLoopCommonModes);
+	CFRelease(src);
+	CFFileDescriptorInvalidate(f);
+	CFRelease(f);
+	close(p[0]);
+	close(p[1]);
+
+	/* Regular file: always ready. On Linux epoll rejects it (EPERM)
+	 * and CFFileDescriptor falls back to a signalled stand-in; on BSD
+	 * kqueue reports it readable directly. */
+	char tmp[] = "/tmp/cffd-test.XXXXXX";
+	int tfd = mkstemp(tmp);
+	if (tfd < 0)
+		return fail("mkstemp");
+	write(tfd, "data", 4);
+	lseek(tfd, 0, SEEK_SET);
+	f = CFFileDescriptorCreate(NULL, tfd, true, fd_callback, NULL);
+	src = CFFileDescriptorCreateRunLoopSource(NULL, f, 0);
+	CFRunLoopAddSource(rl, src, kCFRunLoopDefaultMode);
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack |
+	    kCFFileDescriptorWriteCallBack);
+	before = fd_read_calls;
+	int wbefore = fd_write_calls;
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != before + 1)
+		return fail("regular-file read callback did not fire");
+#if defined(__linux__)
+	if (fd_write_calls != wbefore + 1)
+		return fail("regular-file write callback did not fire");
+#endif
+	/* One-shot still applies to the stand-in. */
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false);
+	if (fd_read_calls != before + 1)
+		return fail("regular-file callback fired again without re-enable");
+	CFFileDescriptorEnableCallBacks(f, kCFFileDescriptorReadCallBack);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+	if (fd_read_calls != before + 2)
+		return fail("regular-file read did not fire after re-enable");
+	CFRunLoopRemoveSource(rl, src, kCFRunLoopDefaultMode);
+	CFRelease(src);
+	CFFileDescriptorInvalidate(f);
+	CFRelease(f);
+	unlink(tmp);
+
+	return 0;
+}
+
+/* ---- v1-source port ownership -----------------------------------------
+ * The run loop must not drain a version-1 source's port: it belongs to
+ * the source. A source whose port is a pipe with a byte pending must
+ * still find the byte in its perform — the old code read() it away
+ * while acknowledging the wakeup.
+ */
+
+struct pipe_source {
+	int rfd;
+	int performed;
+	int byte_ok;
+};
+
+static __CFPort
+pipe_source_get_port(void *info)
+{
+	struct pipe_source *s = info;
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
+	/* Same packing CFRunLoop.c uses for pipe ports. */
+	return ((__CFPort)(uint32_t)s->rfd << 32) | (uint32_t)s->rfd;
+#else
+	return s->rfd;
+#endif
+}
+
+static void
+pipe_source_perform(void *info)
+{
+	struct pipe_source *s = info;
+	char c;
+	s->performed++;
+	s->byte_ok = (read(s->rfd, &c, 1) == 1 && c == 'x');
+}
+
+static int
+test_source1_port_ownership(void)
+{
+	int p[2];
+	if (pipe(p) != 0)
+		return fail("pipe");
+	fcntl(p[0], F_SETFL, O_NONBLOCK);
+
+	struct pipe_source s = { p[0], 0, 0 };
+	CFRunLoopSourceContext1 ctx;
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.version = 1;
+	ctx.info = &s;
+	ctx.getPort = pipe_source_get_port;
+	ctx.perform = pipe_source_perform;
+	CFRunLoopSourceRef src = CFRunLoopSourceCreate(NULL, 0,
+	    (CFRunLoopSourceContext *)&ctx);
+	CFRunLoopAddSource(CFRunLoopGetCurrent(), src, kCFRunLoopDefaultMode);
+
+	write(p[1], "x", 1);
+	CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+
+	CFRunLoopRemoveSource(CFRunLoopGetCurrent(), src,
+	    kCFRunLoopDefaultMode);
+	CFRelease(src);
+	close(p[0]);
+	close(p[1]);
+
+	if (!s.performed)
+		return fail("version-1 source perform never ran");
+	if (!s.byte_ok)
+		return fail("run loop drained a version-1 source's port");
+	return 0;
+}
+
+/* ---- many run-loop modes ----------------------------------------------
+ * NextBSD's CF packed a global timer ident into each mode's kqueue port
+ * and capped it at 16; a 17th mode aborted. Twenty modes with a timer
+ * each must all work.
+ */
+
+static int
+test_many_modes(void)
+{
+	CFRunLoopRef rl = CFRunLoopGetCurrent();
+	for (int i = 0; i < 20; i++) {
+		CFStringRef mode = CFStringCreateWithFormat(NULL, NULL,
+		    CFSTR("ManyMode%d"), i);
+		double fired = 0;
+		CFRunLoopTimerContext tctx = { 0, &fired, NULL, NULL, NULL };
+		CFRunLoopTimerRef t = CFRunLoopTimerCreate(NULL,
+		    CFAbsoluteTimeGetCurrent() + 0.02, 0, 0, 0, timer_fired,
+		    &tctx);
+		CFRunLoopAddTimer(rl, t, mode);
+		CFRunLoopRunInMode(mode, 1.0, true);
+		CFRunLoopTimerInvalidate(t);
+		CFRelease(t);
+		CFRelease(mode);
+		if (fired == 0)
+			return fail("timer in a mode past the 16th did not fire");
+	}
+	return 0;
+}
+
+/* ---- main dispatch queue ----------------------------------------------
+ * dispatch_async onto the main queue from a secondary thread must run
+ * while the main thread is inside CFRunLoopRunInMode (DISPATCH_COCOA_COMPAT
+ * main-queue servicing).
+ */
+
+static int main_queue_ran;
+
+static void *
+post_to_main(void *arg)
+{
+	(void)arg;
+	usleep(20000);
+	dispatch_async(dispatch_get_main_queue(), ^{
+		main_queue_ran = 1;
+		CFRunLoopStop(CFRunLoopGetMain());
+	});
+	return NULL;
+}
+
+static int
+test_dispatch_main_queue(void)
+{
+	pthread_t thread;
+	pthread_create(&thread, NULL, post_to_main, NULL);
+	SInt32 r = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 2.0, false);
+	pthread_join(thread, NULL);
+	if (!main_queue_ran)
+		return fail("dispatch_async to main queue never ran");
+	if (r != kCFRunLoopRunStopped)
+		return fail("main-queue run did not stop after the block");
+	return 0;
+}
+
 
 
 int
@@ -1013,6 +1362,7 @@ main(void)
 	 */
 	double t0 = monotonic();
 	CFRunLoopTimerContext tctx = { 0, &fired_at, NULL, NULL, NULL };
+
 	CFRunLoopTimerRef timer = CFRunLoopTimerCreate(kCFAllocatorDefault,
 	    CFAbsoluteTimeGetCurrent() + 0.05, 0, 0, 0, timer_fired, &tctx);
 	CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, kCFRunLoopDefaultMode);
@@ -1038,6 +1388,18 @@ main(void)
 	if (test_foreign_bridge() != 0)
 		return 1;
 	if (test_foreign_bridge_2b() != 0)
+		return 1;
+
+	/*
+	 * 5. CFFileDescriptor, many modes, main dispatch queue.
+	 */
+	if (test_file_descriptor() != 0)
+		return 1;
+	if (test_many_modes() != 0)
+		return 1;
+	if (test_dispatch_main_queue() != 0)
+		return 1;
+	if (test_source1_port_ownership() != 0)
 		return 1;
 
 	printf("COREFOUNDATION-OK: CFDictionary + XML/binary plist round-trip and run loop timing succeeded\n");

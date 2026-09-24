@@ -427,6 +427,17 @@ CF_INLINE void __CFPortFree(__CFPort port, __unused uintptr_t guard) {
     close(port);
 }
 
+/* Drain a port the run loop owns (wake-up eventfd, timerfd, dispatch
+ * eventfd). Never call this on a version-1 source's port: that fd
+ * belongs to the source, which drains it in its perform. */
+static void __CFPortDrain(__CFPort port) {
+    uint64_t value;
+    ssize_t result;
+    do {
+        result = read(port, &value, sizeof(value));
+    } while (result == -1 && errno == EINTR);
+}
+
 CF_INLINE __CFPortSet __CFPortSetAllocate(void) {
     return epoll_create1(EPOLL_CLOEXEC);
 }
@@ -512,6 +523,18 @@ static void __CFPortTrigger(__CFPort port) {
     } while (result == -1 && errno == EINTR);
 }
 
+/* Drain a port the run loop owns (wake-up pipe, dispatch pipe). Never
+ * call this on a version-1 source's port: that fd belongs to the
+ * source, which drains it in its perform. */
+static void __CFPortDrain(__CFPort port) {
+    int rfd = (int)__CFPORT_UNPACK_R(port);
+    char buf[64];
+    ssize_t result;
+    do {
+        result = read(rfd, buf, sizeof(buf));
+    } while (result == -1 && errno == EINTR);
+}
+
 CF_INLINE void __CFPortFree(__CFPort port, __unused uintptr_t guard) {
     close((int)(__CFPORT_UNPACK_W(port)));
     close((int)(__CFPORT_UNPACK_R(port)));
@@ -519,15 +542,14 @@ CF_INLINE void __CFPortFree(__CFPort port, __unused uintptr_t guard) {
 
 #define __CFPORT_TIMER_UNPACK_ID(port) (((port) >> 32) & 0x7fffffff)
 #define __CFPORT_TIMER_UNPACK_KQ(port) ((port) & 0xffffffff)
-#define MAX_TIMERS 16
-uintptr_t ident = 0;
 
 static __CFPort mk_timer_create(__CFPortSet parent) {
-    if (ident > MAX_TIMERS) return CFPORT_NULL;
-    ident++;
-
-    int kq = parent->kq;
-    __CFPort port = __CFPORT_TIMER_PACK(ident, kq);
+    // A mode owns its port set's kqueue and arms exactly one EVFILT_TIMER
+    // on it, so the ident only has to be unique within that kqueue — a
+    // constant suffices (kqueue idents are per (ident, filter), and no
+    // EVFILT_READ registration can share it). The kqueue fd in the low
+    // half keeps the packed port distinct across modes.
+    __CFPort port = __CFPORT_TIMER_PACK(1, parent->kq);
 
     return port;
 }
@@ -594,7 +616,6 @@ static kern_return_t mk_timer_destroy(__CFPort timer) {
     int kq = __CFPORT_TIMER_UNPACK_KQ(timer);
     int r = kevent(kq, &tev, 1, NULL, 0, NULL);
 
-    ident--;
     return KERN_SUCCESS;
 }
 
@@ -713,12 +734,7 @@ static Boolean __CFRunLoopServiceFileDescriptors(__CFPortSet set, __CFPort port,
             return false;
         }
 
-        if (awake.filter == EVFILT_READ) {
-            char x;
-            r = read(awake.ident, &x, 1);
-        }
-
-        awokenPort = (__CFPort)awake.udata;
+	awokenPort = (__CFPort)awake.udata;
     }
 
     if (livePort)
@@ -2862,29 +2878,17 @@ static Boolean __CFRunLoopServiceFileDescriptors(__CFPortSet portSet, __CFPort o
         if (result == 0) {
             return false;
         }
-        
+
         awokenFd = event.data.fd;
     }
-    
-    // Now we acknowledge the wakeup. awokenFd is an eventfd (or possibly a
-    // timerfd ?). In either case, we read an 8-byte integer, as per eventfd(2)
-    // and timerfd_create(2).
-    uint64_t value;
-    do {
-        result = read(awokenFd, &value, sizeof(value));
-    } while (result == -1 && errno == EINTR);
-    
-    if (result == -1 && errno == EAGAIN) {
-        // Another thread stole the wakeup for this fd. (FIXME Can this actually
-        // happen?)
-        return false;
-    }
-    
-    CFAssert2(result == sizeof(value), __kCFLogAssertion, "%s(): error %d from read(2) while acknowledging wakeup", __PRETTY_FUNCTION__, errno);
-    
+
+    /* The awoken fd is NOT drained here: a version-1 source's port is
+     * the source's own fd (e.g. CFFileDescriptor's inner epoll), which
+     * only the source's perform may drain. CF-owned ports are drained
+     * at the dispatch site in __CFRunLoopRun. */
     if (livePort)
         *livePort = awokenFd;
-    
+
     return true;
 }
 
@@ -3195,7 +3199,9 @@ static int32_t __CFRunLoopRun(CFRunLoopRef rl, CFRunLoopModeRef rlm, CFTimeInter
             CFRUNLOOP_WAKEUP_FOR_WAKEUP();
             cf_trace(KDEBUG_EVENT_CFRL_DID_WAKEUP_FOR_WAKEUP, rl, rlm, livePort, 0);
             // do nothing on Mac OS
-#if TARGET_OS_WIN32
+#if TARGET_OS_LINUX || TARGET_OS_BSD
+            __CFPortDrain(rl->_wakeUpPort);
+#elif TARGET_OS_WIN32
             // Always reset the wake up port, or risk spinning forever
             ResetEvent(rl->_wakeUpPort);
 #endif
@@ -3211,6 +3217,9 @@ static int32_t __CFRunLoopRun(CFRunLoopRef rl, CFRunLoopModeRef rlm, CFTimeInter
         }
 #endif
         else if (rlm->_timerPort != CFPORT_NULL && livePort == rlm->_timerPort) {
+#if TARGET_OS_LINUX
+            __CFPortDrain(rlm->_timerPort);
+#endif
             CFRUNLOOP_WAKEUP_FOR_TIMER();
             // On Windows, we have observed an issue where the timer port is set before the time which we requested it to be set. For example, we set the fire time to be TSR 167646765860, but it is actually observed firing at TSR 167646764145, which is 1715 ticks early. The result is that, when __CFRunLoopDoTimers checks to see if any of the run loop timers should be firing, it appears to be 'too early' for the next timer, and no timers are handled.
             // In this case, the timer port has been automatically reset (since it was returned from MsgWaitForMultipleObjectsEx), and if we do not re-arm it, then no timers will ever be serviced again unless something adjusts the timer list (e.g. adding or removing timers). The fix for the issue is to reset the timer here if CFRunLoopDoTimers did not handle a timer itself. 9308754
@@ -3233,6 +3242,9 @@ static int32_t __CFRunLoopRun(CFRunLoopRef rl, CFRunLoopModeRef rlm, CFTimeInter
         else if (livePort == dispatchPort) {
             CFRUNLOOP_WAKEUP_FOR_DISPATCH();
             cf_trace(KDEBUG_EVENT_CFRL_DID_WAKEUP_FOR_DISPATCH, rl, rlm, livePort, 0);
+#if TARGET_OS_LINUX || TARGET_OS_BSD
+            __CFPortDrain(dispatchPort);
+#endif
             __CFRunLoopModeUnlock(rlm);
             __CFRunLoopUnlock(rl);
             _CFSetTSD(__CFTSDKeyIsInGCDMainQ, (void *)6, NULL);
@@ -3269,7 +3281,7 @@ static int32_t __CFRunLoopRun(CFRunLoopRef rl, CFRunLoopModeRef rlm, CFTimeInter
 		    (void)mach_msg(reply, MACH_SEND_MSG, reply->msgh_size, 0, MACH_PORT_NULL, 0, MACH_PORT_NULL);
 		    CFAllocatorDeallocate(kCFAllocatorSystemDefault, reply);
 		}
-#elif TARGET_OS_WIN32 || (TARGET_OS_LINUX && !TARGET_OS_CYGWIN)
+#elif TARGET_OS_WIN32 || (TARGET_OS_LINUX && !TARGET_OS_CYGWIN) || TARGET_OS_BSD
                 sourceHandledThisLoop = __CFRunLoopDoSource1(rl, rlm, rls) || sourceHandledThisLoop;
 #endif
             } else {

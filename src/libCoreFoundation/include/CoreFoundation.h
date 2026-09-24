@@ -80,6 +80,9 @@
 #include "CFPlugIn.h"
 #  endif
 #include "CFRunLoop.h"
+#  if !TARGET_OS_WASI
+#include "CFFileDescriptor.h"
+#  endif
 #include "CFStream.h"
 #  if !TARGET_OS_WASI
 #include "CFSocket.h"
